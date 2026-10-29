@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dose Check of Learning and Management Team (LMT)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--green:#2e8b57;--red:#c0392b;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);padding:14px;}
+
+/* ── filter bar ── */
+.filter-bar{background:var(--surface);border-radius:8px;padding:12px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.filter-group{display:flex;flex-direction:column;gap:4px;}
+.filter-group label{font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.filter-group select,.filter-group input{padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:12px;color:var(--text);background:white;min-width:130px;}
+.filter-group select:focus,.filter-group input:focus{outline:none;border-color:var(--primary);}
+
+  /* LMT dual range slider */
+  #lmt-slider-from, #lmt-slider-to { top: 8px; height: 4px; }
+  #lmt-slider-from::-webkit-slider-thumb, #lmt-slider-to::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none; pointer-events:all; cursor:pointer;
+    width:18px; height:18px; border-radius:50%; background:#1565c0; border:2px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.3);
+  }
+  #lmt-slider-from::-moz-range-thumb, #lmt-slider-to::-moz-range-thumb {
+    pointer-events:all; cursor:pointer; width:16px; height:16px; border-radius:50%; background:#1565c0; border:2px solid #fff;
+  }
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="page" id="page-lmt-chlorination">
+  <!-- Blue gradient title header -->
+  <div style="background:linear-gradient(135deg,#1565c0,#1e88e5);color:#fff;padding:14px 24px;border-radius:10px;margin-bottom:16px;text-align:center;">
+    <h2 style="margin:0;font-size:20px;font-weight:700;letter-spacing:.5px;">Dose Check of Learning and Management Team (LMT)</h2>
+  </div>
+
+  <!-- Filter bar -->
+  <div class="filter-bar" style="margin-bottom:14px;">
+    <div class="filter-group"><label>District</label><select id="lmt-district" onchange="updateLMTFilters()"><option value="">All Districts</option></select></div>
+    <div class="filter-group"><label>Block</label><select id="lmt-block" onchange="updateLMTGPFilter()"><option value="">All Blocks</option></select></div>
+    <div class="filter-group"><label>GP Name</label><select id="lmt-gp" onchange="updateLMTSiteFilter()"><option value="">All GPs</option></select></div>
+    <div class="filter-group"><label>Site</label><select id="lmt-site" onchange="renderLMTCharts()"><option value="">All Sites</option></select></div>
+  </div>
+
+  <!-- Site Info Card (hidden until site selected) -->
+  <div id="lmt-site-detail-card" style="display:none;background:#e3f2fd;border:1px solid #90caf9;border-radius:10px;padding:14px 20px;margin-bottom:14px;">
+    <div style="text-align:center;font-weight:700;color:#0d47a1;font-size:13px;margin-bottom:10px;letter-spacing:.5px;">Site Information</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 20px;text-align:center;min-width:130px;">
+        <div style="font-size:10px;color:#888;margin-bottom:4px;">Site ID</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="lmt-si-site">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 20px;text-align:center;min-width:130px;">
+        <div style="font-size:10px;color:#888;margin-bottom:4px;">District</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="lmt-si-district">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 20px;text-align:center;min-width:130px;">
+        <div style="font-size:10px;color:#888;margin-bottom:4px;">Block</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="lmt-si-block">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 20px;text-align:center;min-width:130px;">
+        <div style="font-size:10px;color:#888;margin-bottom:4px;">Gram Panchayat</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="lmt-si-gp">&mdash;</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart card -->
+  <div style="background:#fff;border:2px solid #ce93d8;border-radius:12px;padding:18px 20px;margin-bottom:14px;">
+    <h3 style="text-align:center;color:#1565c0;font-size:15px;margin:0 0 14px;">Latest Free Residual Chlorine (FRC) readings at FHH and LHH</h3>
+    <div style="position:relative;height:320px;"><canvas id="chart-lmt-frc"></canvas></div>
+  </div>
+
+  <!-- Date slider panel -->
+  <div style="background:#f5f7fa;border:1px solid #cfd8dc;border-radius:10px;padding:14px 20px;">
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:#37474f;margin-bottom:6px;">Reading Date</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="date" id="lmt-date-from" onchange="syncLMTSlider();renderLMTCharts()" style="border:1px solid #b0bec5;border-radius:6px;padding:4px 8px;font-size:12px;background:#fff;">
+          <span style="color:#546e7a;font-weight:600;">&mdash;</span>
+          <input type="date" id="lmt-date-to" onchange="syncLMTSlider();renderLMTCharts()" style="border:1px solid #b0bec5;border-radius:6px;padding:4px 8px;font-size:12px;background:#fff;">
+        </div>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <div style="font-size:11px;color:#546e7a;margin-bottom:6px;font-style:italic;">Please use the slider to change the Date of dose check for Period mentioned</div>
+        <div style="position:relative;height:24px;">
+          <input type="range" id="lmt-slider-from" min="0" max="100" value="0" oninput="moveLMTSlider('from')" style="position:absolute;width:100%;pointer-events:none;appearance:none;height:4px;background:transparent;outline:none;">
+          <input type="range" id="lmt-slider-to" min="0" max="100" value="100" oninput="moveLMTSlider('to')" style="position:absolute;width:100%;pointer-events:none;appearance:none;height:4px;background:transparent;outline:none;">
+          <div id="lmt-slider-track" style="position:absolute;top:10px;left:0;right:0;height:4px;background:#b0bec5;border-radius:2px;"></div>
+          <div id="lmt-slider-range" style="position:absolute;top:10px;height:4px;background:#1565c0;border-radius:2px;left:0%;right:0%;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* LMT dose-check readings — 71 rows, copied from the dashboard's APP_DATA.lmtData. */
+/* lmtData comes from data/lmt-data.json */
+
+/* Device inventory — 213 rows. Used here by the GP filter and the Site Information card. */
+/* deviceInventory comes from data/device-inventory.json */
+
+let chartInstances={};
+function destroyChart(id){if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];}}
+
+function subtractDays(dateStr, days){
+  const d=new Date(dateStr);
+  d.setDate(d.getDate()-days);
+  return d.toISOString().split('T')[0];
+}
+
+/* The dashboard's populateFilters() fills several pages at once;
+   this is the slice of it that belongs to LMT Chlorination. */
+function populateFilters(){
+  const lmt=window.APP_DATA.lmtData;
+  const lmtDistricts=[...new Set(lmt.map(d=>d.district))].filter(Boolean).sort();
+  const lmtDist=document.getElementById('lmt-district');
+  lmtDistricts.forEach(d=>lmtDist.innerHTML+=`<option value="${d}">${d}</option>`);
+
+  const lmtDates=lmt.map(d=>d.date).filter(Boolean).sort();
+  if(lmtDates.length){
+    document.getElementById('lmt-date-to').value=lmtDates[lmtDates.length-1];
+    document.getElementById('lmt-date-from').value=subtractDays(lmtDates[lmtDates.length-1],15);
+    setTimeout(syncLMTSlider,0);
+  }
+}
+
+// ── LMT CHLORINATION ──
+function updateLMTFilters(){
+  const dist=document.getElementById('lmt-district').value;
+  const lmt=window.APP_DATA.lmtData;
+  const rows=dist?lmt.filter(d=>d.district===dist):lmt;
+  const blockSel=document.getElementById('lmt-block');
+  const blocks=[...new Set(rows.map(d=>d.block))].filter(Boolean).sort();
+  blockSel.innerHTML='<option value="">All Blocks</option>';
+  blocks.forEach(b=>blockSel.innerHTML+=`<option value="${b}">${b}</option>`);
+  updateLMTGPFilter();
+}
+
+function updateLMTGPFilter(){
+  const dist=document.getElementById('lmt-district').value;
+  const block=document.getElementById('lmt-block').value;
+  const lmt=window.APP_DATA.lmtData;
+  const inv=window.APP_DATA.deviceInventory;
+  let rows=dist?lmt.filter(d=>d.district===dist):lmt;
+  if(block) rows=rows.filter(d=>d.block===block);
+  const validSites=new Set(rows.map(d=>d.site||d.siteId).filter(Boolean));
+  const gpSel=document.getElementById('lmt-gp');
+  const curGP=gpSel?gpSel.value:'';
+  const gps=[...new Set(inv.filter(d=>validSites.has(d.siteId)&&d.gpName).map(d=>d.gpName))].sort();
+  if(gpSel){gpSel.innerHTML='<option value="">All GPs</option>';gps.forEach(g=>gpSel.innerHTML+=`<option value="${g}"${g===curGP?' selected':''}>${g}</option>`);}
+  updateLMTSiteFilter();
+}
+
+function updateLMTSiteFilter(){
+  const dist=document.getElementById('lmt-district').value;
+  const block=document.getElementById('lmt-block').value;
+  const gp=(document.getElementById('lmt-gp')||{}).value||'';
+  const lmt=window.APP_DATA.lmtData;
+  const inv=window.APP_DATA.deviceInventory;
+  let rows=dist?lmt.filter(d=>d.district===dist):lmt;
+  if(block) rows=rows.filter(d=>d.block===block);
+  if(gp){const gpSites=new Set(inv.filter(d=>d.gpName===gp).map(d=>d.siteId));rows=rows.filter(d=>gpSites.has(d.site||d.siteId));}
+  const siteSel=document.getElementById('lmt-site');
+  const sites=[...new Set(rows.map(d=>d.site||d.siteId))].filter(Boolean).sort();
+  siteSel.innerHTML='<option value="">All Sites</option>';
+  sites.forEach(s=>siteSel.innerHTML+=`<option value="${s}">${s}</option>`);
+  renderLMTCharts();
+}
+
+function renderLMTCharts(){
+  const dist=document.getElementById('lmt-district').value;
+  const block=document.getElementById('lmt-block').value;
+  const site=document.getElementById('lmt-site').value;
+  const gp=(document.getElementById('lmt-gp')||{}).value||'';
+  let rows=window.APP_DATA.lmtData;
+  if(dist) rows=rows.filter(d=>d.district===dist);
+  if(block) rows=rows.filter(d=>d.block===block);
+  if(gp){const gpSites=new Set(window.APP_DATA.deviceInventory.filter(d=>d.gpName===gp).map(d=>d.siteId));rows=rows.filter(d=>gpSites.has(d.site||d.siteId));}
+  if(site) rows=rows.filter(d=>d.site===site);
+
+  const from=document.getElementById('lmt-date-from').value;
+  const to=document.getElementById('lmt-date-to').value;
+  if(from) rows=rows.filter(d=>d.date>=from);
+  if(to) rows=rows.filter(d=>d.date<=to);
+  rows=rows.filter(d=>d.date).sort((a,b)=>a.date.localeCompare(b.date));
+
+  // Update site info card — show only when a site is selected
+  const lmtSiteCard=document.getElementById('lmt-site-detail-card');
+  if(site){
+    const inv=window.APP_DATA.deviceInventory.find(d=>d.siteId===site);
+    document.getElementById('lmt-si-site').textContent=site;
+    document.getElementById('lmt-si-district').textContent=(inv&&inv.district)||rows[0]?.district||'—';
+    document.getElementById('lmt-si-block').textContent=(inv&&inv.block)||rows[0]?.block||'—';
+    document.getElementById('lmt-si-gp').textContent=(inv&&inv.gpName)||rows[0]?.gpName||'—';
+    lmtSiteCard.style.display='block';
+  } else {
+    lmtSiteCard.style.display='none';
+  }
+
+  // Line chart sorted by date — styled to match reference
+  rows=rows.sort((a,b)=>a.date.localeCompare(b.date));
+  const toTs=d=>new Date(d.date).getTime();
+
+  destroyChart('chart-lmt-frc');
+  const ctx=document.getElementById('chart-lmt-frc').getContext('2d');
+  chartInstances['chart-lmt-frc']=new Chart(ctx,{
+    type:'line',
+    data:{datasets:[
+      {label:'FCR FHH',
+       data:rows.map(d=>({x:toTs(d),y:d.fcrFHH})),
+       borderColor:'#42a5f5',backgroundColor:'rgba(66,165,245,.08)',
+       tension:.3,fill:false,pointRadius:4,pointHoverRadius:6,
+       pointBackgroundColor:'#42a5f5',borderWidth:2.5,spanGaps:false},
+      {label:'FCR LHH',
+       data:rows.map(d=>({x:toTs(d),y:d.fcrLHH})),
+       borderColor:'#0d47a1',backgroundColor:'rgba(13,71,161,.08)',
+       tension:.3,fill:false,pointRadius:4,pointHoverRadius:6,
+       pointBackgroundColor:'#0d47a1',borderWidth:2.5,spanGaps:false},
+      {label:'Max FRC',
+       data:rows.length?[{x:new Date(rows[0].date).getTime()-86400000,y:1.25},{x:new Date(rows[rows.length-1].date).getTime()+86400000,y:1.25}]:[],
+       borderColor:'#e53935',borderDash:[8,4],borderWidth:1.5,pointRadius:0,fill:false,tension:0,showLine:true},
+      {label:'Min FRC',
+       data:rows.length?[{x:new Date(rows[0].date).getTime()-86400000,y:0.2},{x:new Date(rows[rows.length-1].date).getTime()+86400000,y:0.2}]:[],
+       borderColor:'#e53935',borderDash:[4,4],borderWidth:1.5,pointRadius:0,fill:false,tension:0,showLine:true}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'top',labels:{font:{size:11},usePointStyle:true,pointStyle:'circle',color:'#333'}},
+        tooltip:{callbacks:{
+          title:items=>{
+            const d=new Date(items[0].parsed.x);
+            return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+          },
+          label:c=>{
+            if(c.parsed.y==null) return null;
+            const row=rows[c.dataIndex];
+            return ` ${c.dataset.label}: ${c.parsed.y.toFixed(2)} mg/L${row?' — '+(row.schemeName||row.site):''}`;
+          }
+        }}
+      },
+      scales:{
+        y:{beginAtZero:true,
+           title:{display:true,text:'FRC Value(PPM)',font:{size:11},color:'#444'},
+           grid:{color:'rgba(0,0,0,.07)'},
+           ticks:{font:{size:10},color:'#555'}},
+        x:{type:'time',
+           time:{unit:'month',displayFormats:{month:'MMM yyyy',day:'dd/MM/yyyy'},tooltipFormat:'dd/MM/yyyy'},
+           title:{display:true,text:'Date of visit',font:{size:11},color:'#444'},
+           grid:{color:'rgba(0,0,0,.04)'},
+           ticks:{font:{size:10},color:'#555',maxRotation:0}}
+      }
+    }
+  });
+}
+
+// LMT dual-range slider helpers
+function syncLMTSlider(){
+  const allDates=window.APP_DATA.lmtData.map(d=>d.date).filter(Boolean).sort();
+  if(!allDates.length) return;
+  const minT=new Date(allDates[0]).getTime(),maxT=new Date(allDates[allDates.length-1]).getTime(),span=maxT-minT||1;
+  const fromVal=document.getElementById('lmt-date-from').value;
+  const toVal=document.getElementById('lmt-date-to').value;
+  const fp=fromVal?Math.round((new Date(fromVal).getTime()-minT)/span*100):0;
+  const tp=toVal?Math.round((new Date(toVal).getTime()-minT)/span*100):100;
+  document.getElementById('lmt-slider-from').value=fp;
+  document.getElementById('lmt-slider-to').value=tp;
+  document.getElementById('lmt-slider-range').style.left=fp+'%';
+  document.getElementById('lmt-slider-range').style.right=(100-tp)+'%';
+}
+function moveLMTSlider(which){
+  const allDates=window.APP_DATA.lmtData.map(d=>d.date).filter(Boolean).sort();
+  if(!allDates.length) return;
+  const minT=new Date(allDates[0]).getTime(),maxT=new Date(allDates[allDates.length-1]).getTime(),span=maxT-minT||1;
+  let fp=+document.getElementById('lmt-slider-from').value;
+  let tp=+document.getElementById('lmt-slider-to').value;
+  if(which==='from'&&fp>tp) fp=tp;
+  if(which==='to'&&tp<fp) tp=fp;
+  document.getElementById('lmt-slider-from').value=fp;
+  document.getElementById('lmt-slider-to').value=tp;
+  document.getElementById('lmt-slider-range').style.left=fp+'%';
+  document.getElementById('lmt-slider-range').style.right=(100-tp)+'%';
+  const toDate=d=>new Date(minT+d/100*span).toISOString().split('T')[0];
+  document.getElementById('lmt-date-from').value=toDate(fp);
+  document.getElementById('lmt-date-to').value=toDate(tp);
+  renderLMTCharts();
+}
+
+ISWData.load('lmtData','deviceInventory').then(()=>{
+  populateFilters();
+  updateLMTFilters();
+});
+</script>
+</body>
+</html>

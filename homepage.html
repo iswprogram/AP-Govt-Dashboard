@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ILC Devices in Districts &amp; Project Gallery</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:14px;}
+
+/* ── layout ── */
+.chart-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;}
+.chart-row.stretch{align-items:stretch;flex:1;min-height:0;}
+.chart-card{flex:1;min-width:280px;background:var(--surface);border-radius:8px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;}
+.chart-card.half{flex:1 1 calc(50% - 8px);min-width:280px;}
+.chart-card h3{font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;}
+
+/* ── map ── */
+#map-homepage-district{background:#f8f9fa!important;}
+.leaflet-container{background:#f8f9fa!important;}
+
+/* ── carousel ── */
+.carousel{position:relative;overflow:hidden;border-radius:8px;background:#eee;flex:1;min-height:0;}
+.carousel-slides{display:flex;transition:transform .4s ease;height:100%;min-height:0;}
+.carousel-slide{min-width:100%;height:100%;min-height:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.5);font-size:13px;background:#f0f0f0;flex-direction:column;gap:8px;position:relative;overflow:hidden;}
+.carousel-btn{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.4);color:#fff;border:none;width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;z-index:10;}
+.carousel-btn.prev{left:8px;}
+.carousel-btn.next{right:8px;}
+.carousel-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;}
+.carousel-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.4);cursor:pointer;}
+.carousel-dot.active{background:#fff;}
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="chart-row stretch" style="flex:1;min-height:0;">
+
+  <!-- ── ILC DEVICES IN DISTRICTS ── -->
+  <div class="chart-card half" style="display:flex;flex-direction:column;height:calc(100vh - 62px);min-height:460px;padding:14px 16px;">
+    <!-- Title + subtitle -->
+    <div style="margin-bottom:6px;">
+      <h3 style="margin:0 0 2px 0;">ILC Devices in Districts</h3>
+      <div style="font-size:11px;color:#888;font-style:italic;">Political map of Andhra Pradesh</div>
+    </div>
+    <!-- Legend + hover hint -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;margin-bottom:6px;font-size:11px;">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div>
+          <div style="width:120px;height:10px;border-radius:2px;background:linear-gradient(90deg,#bbdefb,#64b5f6,#1e88e5,#0d47a1);margin-bottom:2px;"></div>
+          <div style="display:flex;justify-content:space-between;width:120px;color:#666;">
+            <span>Low</span><span>High</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <div style="width:12px;height:12px;background:#b0bec5;border-radius:2px;"></div>
+          <span style="color:#666;">No ILC devices</span>
+        </div>
+      </div>
+      <div style="color:#1565c0;font-size:11px;display:flex;align-items:center;gap:4px;">
+        <span>&#128433;&#65039;</span><span>Hover over a district to see number of sites</span>
+      </div>
+    </div>
+    <div id="map-homepage-district" style="flex:1;min-height:0;width:100%;border-radius:4px;overflow:hidden;"></div>
+  </div>
+
+  <!-- ── PROJECT GALLERY ── -->
+  <div class="chart-card half" style="display:flex;flex-direction:column;height:calc(100vh - 62px);min-height:460px;">
+    <h3>Project Gallery</h3>
+    <div class="carousel" id="carousel" style="flex:1;min-height:380px;"
+         onmouseenter="clearInterval(carouselTimer)" onmouseleave="startCarouselTimer()">
+      <div class="carousel-slides" id="carousel-slides"></div>
+      <button class="carousel-btn prev" onclick="carouselPrev()">&lsaquo;</button>
+      <button class="carousel-btn next" onclick="carouselNext()">&rsaquo;</button>
+      <div class="carousel-dots" id="carousel-dots"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- AP district boundaries (26 districts, properties.name) — kept inline so the file works from file:// -->
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* Data for this page:
+     deviceInventory -> data/device-inventory.json  (district site counts)
+     galleryImages   -> data/gallery-images.json    (carousel)
+     apDistricts     -> data/ap-districts.geojson   (choropleth boundaries)
+   All three are fetched by js/data-loader.js before anything renders. */
+
+// ── CAROUSEL ──
+let carouselIdx=0;
+let carouselTimer=null;
+function initCarousel(){
+  const slides=document.getElementById('carousel-slides');
+  const dots=document.getElementById('carousel-dots');
+  window.APP_DATA.galleryImages.forEach((img,i)=>{
+    const slide=document.createElement('div');
+    slide.className='carousel-slide';
+    if(img.url){
+      slide.innerHTML=`
+        <img src="${img.url}" alt="${img.title}" style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;">`;
+      slide.style.position='relative';slide.style.overflow='hidden';slide.style.padding='0';
+    } else {
+      slide.innerHTML=`<div style="font-size:36px;">&#128247;</div>`;
+    }
+    slides.appendChild(slide);
+    const dot=document.createElement('div');
+    dot.className='carousel-dot'+(i===0?' active':'');
+    dot.onclick=()=>carouselGo(i);
+    dots.appendChild(dot);
+  });
+}
+function carouselGo(idx){const n=window.APP_DATA.galleryImages.length;carouselIdx=(idx+n)%n;document.getElementById('carousel-slides').style.transform=`translateX(-${carouselIdx*100}%)`;document.querySelectorAll('.carousel-dot').forEach((d,i)=>d.classList.toggle('active',i===carouselIdx));}
+function carouselPrev(){carouselGo(carouselIdx-1); resetCarouselTimer();}
+function carouselNext(){carouselGo(carouselIdx+1); resetCarouselTimer();}
+function startCarouselTimer(){ carouselTimer = setInterval(()=>carouselGo(carouselIdx+1), 3000); }
+function resetCarouselTimer(){ clearInterval(carouselTimer); startCarouselTimer(); }
+
+// ── HOMEPAGE DISTRICT MAP ──
+let homeDistMapInit=false;
+let homeDistMap=null;
+function initHomeDistrictMap(){
+  if(homeDistMapInit) return;
+  const mapEl=document.getElementById('map-homepage-district');
+  if(!mapEl) return;
+  homeDistMapInit=true;
+
+  const distCounts={};
+  window.APP_DATA.deviceInventory.forEach(d=>{
+    if(d.district) distCounts[d.district]=(distCounts[d.district]||0)+1;
+  });
+
+  function getFill(n){
+    if(!n)    return '#b0bec5';
+    if(n<=5)  return '#bbdefb';
+    if(n<=15) return '#64b5f6';
+    if(n<=40) return '#1e88e5';
+    return '#0d47a1';
+  }
+
+  homeDistMap=L.map('map-homepage-district',{
+    zoomControl:true,attributionControl:false,
+    dragging:false,scrollWheelZoom:true,doubleClickZoom:true,
+    boxZoom:false,keyboard:false
+  });
+  // No tile layer — clean white choropleth like Power BI
+
+  // GeoJSON name → inventory key overrides for spelling mismatches
+  const geoToInv={
+    'annamaya/rayachoti':'Annamayya',
+    'manyam/parvatipuram':'Parvathipuram',
+    'vizianagaram':'Vizainagaram'
+  };
+  function matchDist(raw){
+    if(!raw) return null;
+    const rawLow=raw.toLowerCase().trim();
+    // Check explicit override first
+    if(geoToInv[rawLow] && distCounts[geoToInv[rawLow]]!==undefined) return geoToInv[rawLow];
+    const parts=rawLow.split('/').map(s=>s.trim());
+    return Object.keys(distCounts).find(k=>{
+      const kl=k.toLowerCase().trim();
+      return parts.some(p=>p===kl||p.includes(kl)||kl.includes(p));
+    });
+  }
+
+  const geoData=window.APP_DATA.apDistricts;
+  if(!geoData){ console.error('AP district GeoJSON not found'); return; }
+
+  let geoLayer=L.geoJSON(geoData,{
+    style(f){
+      const raw=(f.properties||{}).name||'';
+      const m=matchDist(raw);
+      return{fillColor:getFill(m?distCounts[m]:0),fillOpacity:0.88,color:'#fff',weight:0.8};
+    },
+    onEachFeature(f,lyr){
+      const raw=(f.properties||{}).name||'';
+      const m=matchDist(raw);
+      const count=m?distCounts[m]:0;
+      lyr.bindTooltip(`<strong>${raw}</strong><br>${count} ILC site${count!==1?'s':''}`,{sticky:true});
+    }
+  }).addTo(homeDistMap);
+  [200,400,800,1500].forEach(t=>setTimeout(()=>{
+    homeDistMap.invalidateSize();
+    try{homeDistMap.fitBounds(geoLayer.getBounds(),{padding:[4,4],animate:false});}catch(e){}
+  },t));
+  setTimeout(()=>{try{homeDistMap.zoomIn(0.5);}catch(e){}},1600);
+  window.addEventListener('resize',()=>{homeDistMap.invalidateSize();try{homeDistMap.fitBounds(geoLayer.getBounds(),{padding:[4,4]});}catch(e){}});
+}
+
+ISWData.load('deviceInventory','galleryImages','apDistricts').then(()=>{
+  initCarousel();
+  startCarouselTimer();
+  initHomeDistrictMap();
+});
+</script>
+</body>
+</html>

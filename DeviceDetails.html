@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Device Details</title>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--green:#2e8b57;--red:#c0392b;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);padding:14px;}
+
+/* ── page header ── */
+.page-header{background:var(--surface);border-radius:8px;padding:14px 20px;border-left:4px solid var(--primary);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.page-header h2{font-size:16px;color:var(--primary);font-weight:700;}
+.page-header p{font-size:12px;color:var(--text-muted);margin-top:2px;}
+
+/* ── filter bar ── */
+.filter-bar{background:var(--surface);border-radius:8px;padding:12px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.filter-group{display:flex;flex-direction:column;gap:4px;}
+.filter-group label{font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.filter-group select,.filter-group input{padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:12px;color:var(--text);background:white;min-width:130px;}
+.filter-group select:focus,.filter-group input:focus{outline:none;border-color:var(--primary);}
+
+/* ── table ── */
+.table-card{background:var(--surface);border-radius:8px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);overflow:auto;}
+.table-card h3{font-size:13px;font-weight:600;margin-bottom:12px;}
+table.data-table{width:100%;border-collapse:collapse;font-size:12px;}
+table.data-table th{background:var(--primary);color:white;padding:8px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;}
+table.data-table td{padding:7px 12px;border-bottom:1px solid var(--border);}
+table.data-table tr:hover td{background:#f5f8ff;}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;}
+.badge-green{background:#d4edda;color:#155724;}
+.badge-red{background:#f8d7da;color:#721c24;}
+.badge-yellow{background:#fff3cd;color:#856404;}
+.badge-blue{background:#d1ecf1;color:#0c5460;}
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="page" id="page-device-details">
+  <div class="page-header"><h2>Device Details</h2><p>Full inventory of 207 ILC devices with status, location and installation details</p></div>
+  <div class="filter-bar" style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div class="filter-group"><label>Bucket</label><select id="dd-bucket" onchange="updateDDFilters()"><option value="">All Buckets</option></select></div>
+      <div class="filter-group"><label>District</label><select id="dd-district" onchange="updateDDFilters()"><option value="">All Districts</option></select></div>
+      <div class="filter-group"><label>Block</label><select id="dd-block" onchange="updateDDFilters()"><option value="">All Blocks</option></select></div>
+      <div class="filter-group"><label>GP Name</label><select id="dd-gp" onchange="renderDeviceTable()"><option value="">All GPs</option></select></div>
+      <div class="filter-group"><label>Source</label><select id="dd-source" onchange="renderDeviceTable()"><option value="">All</option><option value="TA">TA</option><option value="LMT">LMT</option></select></div>
+      <div class="filter-group"><label>Status</label><select id="dd-status" onchange="renderDeviceTable()"><option value="">All</option><option value="Functional">Functional</option><option value="Non-Functional">Non-Functional</option></select></div>
+    </div>
+    <a onclick="navigateTo('glossary')" style="font-size:13px;color:var(--primary);font-weight:600;cursor:pointer;text-decoration:underline;white-space:nowrap;padding-bottom:4px;" title="View bucket type definitions in Glossary">&#128214; For Bucket Type Details</a>
+  </div>
+  <div class="table-card">
+    <h3>All ILC Devices (<span id="dd-count">&mdash;</span>)</h3>
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Site ID</th><th>Bucket</th><th>District</th><th>Block</th><th>GP Name</th><th>Scheme Name</th><th>Install Date</th><th>Source</th><th>Status</th></tr></thead>
+      <tbody id="device-table-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* Device inventory — 213 rows, copied from the dashboard's APP_DATA.deviceInventory. */
+/* deviceInventory comes from data/device-inventory.json via js/data-loader.js */
+
+/* "For Bucket Type Details" asks the shell (Index.html) to switch pages.
+   postMessage is used rather than window.parent.navigateTo() because the
+   browser treats the two frames as separate origins when the dashboard is
+   opened straight from disk, which blocks direct cross-frame calls.
+   Opened on its own, this page has no shell, so the link does nothing. */
+function navigateTo(page){
+  if(window.parent && window.parent !== window){
+    window.parent.postMessage({type:'isw-navigate', page:page}, '*');
+  }
+}
+
+// ── POPULATE FILTERS ──
+function updateDDFilters(){
+  const inv=window.APP_DATA.deviceInventory;
+  const bucket=(document.getElementById('dd-bucket')||{}).value||'';
+  const dist=(document.getElementById('dd-district')||{}).value||'';
+  const block=(document.getElementById('dd-block')||{}).value||'';
+
+  // Filter inventory for cascading
+  let base=inv;
+  if(bucket) base=base.filter(d=>d.bucketType===bucket);
+  if(dist)   base=base.filter(d=>d.district===dist);
+
+  // Repopulate block based on bucket+district
+  const blockSel=document.getElementById('dd-block');
+  const curBlock=blockSel.value;
+  const blocks=[...new Set(base.map(d=>d.block).filter(Boolean))].sort();
+  blockSel.innerHTML='<option value="">All Blocks</option>';
+  blocks.forEach(b=>blockSel.innerHTML+=`<option value="${b}"${b===curBlock?' selected':''}>${b}</option>`);
+
+  // Repopulate GP based on bucket+district+block
+  if(block) base=base.filter(d=>d.block===block);
+  const gpSel=document.getElementById('dd-gp');
+  const curGP=gpSel.value;
+  const gps=[...new Set(base.map(d=>d.gpName).filter(Boolean))].sort();
+  gpSel.innerHTML='<option value="">All GPs</option>';
+  gps.forEach(g=>gpSel.innerHTML+=`<option value="${g}"${g===curGP?' selected':''}>${g}</option>`);
+
+  renderDeviceTable();
+}
+
+/* The dashboard's populateFilters() fills several pages' dropdowns at once;
+   this is the slice of it that belongs to Device Details. */
+function populateFilters(){
+  const inv=window.APP_DATA.deviceInventory;
+  const ddDistricts=[...new Set(inv.map(d=>d.district))].filter(Boolean).sort();
+  const ddDist=document.getElementById('dd-district');
+  ddDistricts.forEach(d=>ddDist.innerHTML+=`<option value="${d}">${d}</option>`);
+
+  /* The original dashboard never filled this dropdown, so filtering by bucket
+     was impossible. Filled the same way as District — distinct values from the
+     inventory, so a bucket with no sites is never offered. One site has a blank
+     bucketType; filter(Boolean) keeps it out of the list. */
+  const ddBuckets=[...new Set(inv.map(d=>d.bucketType))].filter(Boolean).sort();
+  const ddBucket=document.getElementById('dd-bucket');
+  ddBuckets.forEach(b=>ddBucket.innerHTML+=`<option value="${b}">${b}</option>`);
+}
+
+// ── DEVICE TABLE ──
+function renderDeviceTable(){
+  const bucket=(document.getElementById('dd-bucket')||{}).value||'';
+  const dist=(document.getElementById('dd-district')||{}).value||'';
+  const block=(document.getElementById('dd-block')||{}).value||'';
+  const gp=(document.getElementById('dd-gp')||{}).value||'';
+  const source=(document.getElementById('dd-source')||{}).value||'';
+  const status=(document.getElementById('dd-status')||{}).value||'';
+  let rows=window.APP_DATA.deviceInventory;
+  if(bucket) rows=rows.filter(d=>d.bucketType===bucket);
+  if(dist)   rows=rows.filter(d=>d.district===dist);
+  if(block)  rows=rows.filter(d=>d.block===block);
+  if(gp)     rows=rows.filter(d=>d.gpName===gp);
+  if(source) rows=rows.filter(d=>d.source===source);
+  if(status) rows=rows.filter(d=>d.status===status);
+  document.getElementById('dd-count').textContent=rows.length;
+  const dtb=document.getElementById('device-table-body');
+  dtb.innerHTML='';
+  rows.forEach((d,i)=>{
+    const cls=d.status==='Functional'?'badge-green':d.status==='Non-Functional'?'badge-red':'badge-blue';
+    dtb.innerHTML+=`<tr><td>${i+1}</td><td>${d.siteId}</td><td>${d.bucketType}</td><td>${d.district}</td><td>${d.block}</td><td>${d.gpName}</td><td>${d.schemeName}</td><td>${d.installDate}</td><td>${d.source}</td><td><span class="badge ${cls}">${d.status}</span></td></tr>`;
+  });
+}
+
+ISWData.load('deviceInventory').then(()=>{
+  populateFilters();
+  updateDDFilters();
+});
+</script>
+</body>
+</html>

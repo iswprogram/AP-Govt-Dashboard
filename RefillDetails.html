@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TA Sites Refill Details</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--green:#2e8b57;--red:#c0392b;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);padding:14px;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="page" id="page-refill">
+
+  <!-- Gradient title -->
+  <div style="background:linear-gradient(135deg,#1565c0,#1e88e5);color:#fff;padding:14px 24px;border-radius:10px;margin-bottom:14px;text-align:center;">
+    <h2 style="margin:0;font-size:20px;font-weight:700;">TA Sites Refill Details</h2>
+  </div>
+
+  <!-- District checkboxes -->
+  <div style="background:#f5f7fa;border:1px solid #cfd8dc;border-radius:8px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+    <span style="font-size:11px;font-weight:700;color:#37474f;text-transform:uppercase;">District</span>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;"><input type="checkbox" id="rf-chk-all" checked onchange="refillCheckAll(this)"> All Districts</label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;"><input type="checkbox" class="rf-chk-dist" value="Eluru" checked onchange="renderRefillCharts()"> Eluru</label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;"><input type="checkbox" class="rf-chk-dist" value="Krishna" checked onchange="renderRefillCharts()"> Krishna</label>
+    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px;"><input type="checkbox" class="rf-chk-dist" value="NTR" checked onchange="renderRefillCharts()"> NTR</label>
+  </div>
+
+  <!-- ROW 1: Tablets by Site (left large) + Tablets Refill (right) -->
+  <div style="display:flex;gap:12px;margin-bottom:12px;align-items:stretch;">
+
+    <!-- LEFT: Tablets Quantity scrollable -->
+    <div style="flex:3;background:#e8eaf6;border:1px solid #9fa8da;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;min-width:0;">
+      <h3 style="color:#1a237e;font-size:14px;font-weight:700;text-align:center;margin:0 0 10px;">Tablets Quantity by Sites</h3>
+      <div style="overflow-x:auto;overflow-y:hidden;flex:1;">
+        <div id="rf-site-wrap" style="height:300px;">
+          <canvas id="chart-tablets-site"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Tablets Refill + date -->
+    <div style="flex:2;display:flex;flex-direction:column;gap:10px;min-width:0;">
+      <div style="background:#e8eaf6;border:1px solid #9fa8da;border-radius:10px;padding:14px 16px;flex:1;display:flex;flex-direction:column;">
+        <h3 style="color:#1a237e;font-size:14px;font-weight:700;text-align:center;margin:0 0 10px;">Tablets Refill</h3>
+        <div style="position:relative;flex:1;min-height:200px;"><canvas id="chart-tablets-refill"></canvas></div>
+      </div>
+      <!-- Refill Date -->
+      <div style="background:#f5f7fa;border:1px solid #cfd8dc;border-radius:10px;padding:12px 16px;">
+        <div style="font-size:11px;font-weight:700;color:#37474f;margin-bottom:6px;">Refill Date</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <input type="date" id="rf-date-from" onchange="renderRefillCharts()" style="border:1px solid #b0bec5;border-radius:5px;padding:4px 8px;font-size:12px;">
+          <span style="color:#546e7a;">&mdash;</span>
+          <input type="date" id="rf-date-to" onchange="renderRefillCharts()" style="border:1px solid #b0bec5;border-radius:5px;padding:4px 8px;font-size:12px;">
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 2: Donut (left) + Bucket Info table (right) -->
+  <div style="display:flex;gap:12px;align-items:stretch;">
+    <div style="flex:1;background:#ede7f6;border:1px solid #b39ddb;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;">
+      <h3 style="color:#4a148c;font-size:14px;font-weight:700;text-align:center;margin:0 0 10px;">Sites by Bucket Type</h3>
+      <div style="position:relative;flex:1;min-height:240px;"><canvas id="chart-bucket-donut"></canvas></div>
+    </div>
+    <div style="flex:2;background:#fff;border:1px solid #b0bec5;border-radius:10px;padding:14px 18px;display:flex;flex-direction:column;">
+      <h3 style="color:#1565c0;font-size:14px;font-weight:700;text-align:center;margin:0 0 12px;">Bucket Information</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#1565c0;color:#fff;">
+            <th style="padding:9px 14px;text-align:left;">Bucket</th>
+            <th style="padding:9px 14px;text-align:center;">Pump Capacity (Hp)</th>
+            <th style="padding:9px 14px;text-align:center;">Tank Capacity</th>
+          </tr>
+        </thead>
+        <tbody id="bucket-info-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* Refill tracker — 161 rows, copied from the dashboard's APP_DATA.refillTracker. */
+/* refillTracker comes from data/refill-tracker.json */
+
+/* Device inventory — 213 rows. The Tablets Refill chart groups TA install dates from here. */
+/* deviceInventory comes from data/device-inventory.json */
+
+let chartInstances={};
+function destroyChart(id){if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];}}
+
+function subtractDays(dateStr, days){
+  const d=new Date(dateStr);
+  d.setDate(d.getDate()-days);
+  return d.toISOString().split('T')[0];
+}
+
+/* The dashboard's populateFilters() fills several pages at once;
+   this is the slice of it that belongs to Refill Details. */
+function populateFilters(){
+  const rfDatesAll=window.APP_DATA.deviceInventory.filter(d=>d.source==='TA').map(d=>d.installDate).filter(Boolean).sort();
+  if(rfDatesAll.length){
+    const fromEl=document.getElementById('rf-date-from');
+    const toEl=document.getElementById('rf-date-to');
+    if(toEl)   toEl.value=rfDatesAll[rfDatesAll.length-1];
+    if(fromEl) fromEl.value=subtractDays(rfDatesAll[rfDatesAll.length-1],15);
+  }
+}
+
+// ── REFILL CHARTS ──
+function refillCheckAll(cb){
+  document.querySelectorAll('.rf-chk-dist').forEach(c=>{c.checked=cb.checked;});
+  renderRefillCharts();
+}
+
+function renderRefillCharts(){
+  // Resolve selected districts
+  const checked=[...document.querySelectorAll('.rf-chk-dist:checked')].map(c=>c.value);
+  const allChk=document.getElementById('rf-chk-all');
+  if(allChk) allChk.checked=(checked.length===document.querySelectorAll('.rf-chk-dist').length);
+
+  let rows=window.APP_DATA.refillTracker;
+  if(checked.length) rows=rows.filter(d=>checked.includes(d.district));
+
+  const rfFrom=document.getElementById('rf-date-from')?.value;
+  const rfTo=document.getElementById('rf-date-to')?.value;
+
+  // ── Tablets Quantity by Site ──
+  const sorted=[...rows].sort((a,b)=>(b.tabletsQty??0)-(a.tabletsQty??0));
+  destroyChart('chart-tablets-site');
+  const BAR_W=38, CHART_H=300;
+  const chartW=Math.max(700, sorted.length*BAR_W);
+  const rfWrap=document.getElementById('rf-site-wrap');
+  if(rfWrap){ rfWrap.style.width=chartW+'px'; rfWrap.style.height=CHART_H+'px'; }
+  const canvas=document.getElementById('chart-tablets-site');
+  canvas.width=chartW; canvas.height=CHART_H;
+  const ctxS=canvas.getContext('2d');
+  chartInstances['chart-tablets-site']=new Chart(ctxS,{
+    type:'bar',
+    data:{
+      labels:sorted.map(d=>d.siteId),
+      datasets:[{label:'Tablet Stock',data:sorted.map(d=>d.tabletsQty??0),
+        backgroundColor:'#42a5f5',borderColor:'#1e88e5',borderWidth:1,borderRadius:3,
+        barThickness:26}]
+    },
+    options:{responsive:false,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:false}},
+      layout:{padding:{top:22}},
+      scales:{
+        y:{beginAtZero:true,title:{display:true,text:'Tablet Stock',font:{size:11},color:'#444'},
+           grid:{color:'rgba(0,0,0,.06)'},ticks:{font:{size:10}}},
+        x:{title:{display:true,text:'Sites',font:{size:11},color:'#444'},
+           grid:{display:false},ticks:{font:{size:9},maxRotation:65}}
+      }
+    },
+    plugins:[{id:'valLabels',afterDatasetsDraw(chart){
+      const {ctx,data}=chart;
+      chart.getDatasetMeta(0).data.forEach((bar,i)=>{
+        const val=data.datasets[0].data[i];
+        if(!val) return;
+        ctx.save();
+        ctx.fillStyle='#333';
+        ctx.font='bold 9px sans-serif';
+        ctx.textAlign='center';
+        ctx.fillText(val, bar.x, bar.y-5);
+        ctx.restore();
+      });
+    }}]
+  });
+
+  // ── Tablets Refill (group install dates by date from inventory) ──
+  const inv=window.APP_DATA.deviceInventory.filter(d=>d.source==='TA');
+  let invRows=inv;
+  if(checked.length) invRows=inv.filter(d=>checked.includes(d.district));
+  if(rfFrom) invRows=invRows.filter(d=>d.installDate>=rfFrom);
+  if(rfTo)   invRows=invRows.filter(d=>d.installDate<=rfTo);
+  const refillByDate={};
+  invRows.forEach(d=>{if(d.installDate) refillByDate[d.installDate]=(refillByDate[d.installDate]||0)+1;});
+  const rfDates=Object.keys(refillByDate).sort().slice(-12); // last 12 dates
+  destroyChart('chart-tablets-refill');
+  const ctxR=document.getElementById('chart-tablets-refill').getContext('2d');
+  chartInstances['chart-tablets-refill']=new Chart(ctxR,{
+    type:'bar',
+    data:{
+      labels:rfDates.map(d=>{const [y,m,day]=d.split('-');return `${day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]}
+${y}`;}),
+      datasets:[{label:'Number of Tablets',data:rfDates.map(d=>refillByDate[d]),
+        backgroundColor:'#42a5f5',borderColor:'#1e88e5',borderWidth:1,borderRadius:3}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},
+        datalabels:{display:false}
+      },
+      scales:{
+        y:{beginAtZero:true,title:{display:true,text:'Number of Tablets',font:{size:9},color:'#444'},
+           grid:{color:'rgba(0,0,0,.06)'},ticks:{font:{size:9}}},
+        x:{title:{display:true,text:'Last Refill Date',font:{size:9},color:'#444'},
+           grid:{display:false},ticks:{font:{size:8},maxRotation:0}}
+      }
+    },
+    plugins:[{id:'datalabels2',afterDatasetsDraw(chart){
+      const {ctx,data}=chart;
+      chart.getDatasetMeta(0).data.forEach((bar,i)=>{
+        const val=data.datasets[0].data[i];
+        if(!val) return;
+        ctx.save();
+        ctx.fillStyle='#333';
+        ctx.font='bold 9px sans-serif';
+        ctx.textAlign='center';
+        ctx.fillText(val, bar.x, bar.y-4);
+        ctx.restore();
+      });
+    }}]
+  });
+
+  // ── Donut: Sites by Bucket Type ──
+  const bucketCounts={};
+  rows.forEach(d=>{bucketCounts[d.bucketType]=(bucketCounts[d.bucketType]||0)+1;});
+  const bLabels=Object.keys(bucketCounts).sort();
+  const bColors={'Bucket 0':'#ff7043','Bucket 1':'#1a237e','Bucket 2':'#42a5f5','Bucket 3':'#7b1fa2','Bucket 4':'#26a69a'};
+  destroyChart('chart-bucket-donut');
+  const ctxD=document.getElementById('chart-bucket-donut').getContext('2d');
+  chartInstances['chart-bucket-donut']=new Chart(ctxD,{
+    type:'doughnut',
+    data:{labels:bLabels,datasets:[{data:bLabels.map(b=>bucketCounts[b]),
+      backgroundColor:bLabels.map(b=>bColors[b]||'#90a4ae'),borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
+      plugins:{legend:{position:'right',labels:{font:{size:11},usePointStyle:true,pointStyle:'circle'}},
+               tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw}`}}}}
+  });
+
+  // ── Bucket Info table ──
+  const tbody=document.getElementById('bucket-info-body');
+  if(tbody){
+    const bucketInfo=[
+      {b:'Bucket 0',hp:'-',tank:'T<20 KL'},
+      {b:'Bucket 1',hp:'0<3',tank:'T>21KL'},
+      {b:'Bucket 2',hp:'3<=5',tank:'T>21KL'},
+      {b:'Bucket 3',hp:'5<=7.5',tank:'T>21KL'},
+      {b:'Bucket 4',hp:'7.5<',tank:'T>21KL'}
+    ];
+    tbody.innerHTML=bucketInfo.map((r,i)=>`<tr style="background:${i%2?'#f5f7fa':'#fff'};">
+      <td style="padding:7px 12px;font-weight:600;color:#1565c0;">${r.b}</td>
+      <td style="padding:7px 12px;text-align:center;">${r.hp}</td>
+      <td style="padding:7px 12px;text-align:center;">${r.tank}</td>
+    </tr>`).join('');
+  }
+}
+
+ISWData.load('refillTracker','deviceInventory').then(()=>{
+  populateFilters();
+  renderRefillCharts();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jal Mitra Export</title>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--green:#2e8b57;--red:#c0392b;--yellow:#f39c12;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);padding:14px;}
+
+/* The Jal Mitra block builds a .page and appends it to #main. */
+#main{display:flex;flex-direction:column;min-height:0;}
+.page{display:none;flex-direction:column;gap:16px;}
+.page.active{display:flex;flex:1;min-height:0;}
+
+/* ── page header ── */
+.page-header{background:var(--surface);border-radius:8px;padding:14px 20px;border-left:4px solid var(--primary);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.page-header h2{font-size:16px;color:var(--primary);font-weight:700;}
+.page-header p{font-size:12px;color:var(--text-muted);margin-top:2px;}
+
+/* ── filter bar ── */
+.filter-bar{background:var(--surface);border-radius:8px;padding:12px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.filter-group{display:flex;flex-direction:column;gap:4px;}
+.filter-group label{font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.filter-group select,.filter-group input{padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:12px;color:var(--text);background:white;min-width:130px;}
+.filter-group select:focus,.filter-group input:focus{outline:none;border-color:var(--primary);}
+
+/* ── table ── */
+.table-card{background:var(--surface);border-radius:8px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);overflow:auto;}
+.table-card h3{font-size:13px;font-weight:600;margin-bottom:12px;}
+table.data-table{width:100%;border-collapse:collapse;font-size:12px;}
+table.data-table th{background:var(--primary);color:white;padding:8px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;}
+table.data-table td{padding:7px 12px;border-bottom:1px solid var(--border);}
+table.data-table tr:hover td{background:#f5f8ff;}
+
+/* FRC value colouring used by the preview */
+.frc-good{color:var(--green);font-weight:700;}
+.frc-warning{color:var(--yellow);font-weight:700;}
+.frc-bad{color:var(--red);font-weight:700;}
+
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+/* The .jm-* rules (buttons, mono font, NULL pills, sticky scroll box)
+   are injected at runtime by the block below — see its section 9. */
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div id="main"></div>
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* This page reads five data sets, all fetched by js/data-loader.js:
+     deviceInventory   data/device-inventory.json    one export row per site
+     processMonitoring data/process-monitoring.json  TA readings
+     lmtData           data/lmt-data.json            LMT readings
+     refillTracker     data/refill-tracker.json      extended export
+     bucketTypes       data/bucket-types.json        extended export
+   plus the AP Govt. Asset Master (data/ohsr-master.json), which is private to
+   the block below and is pushed in with JalMitra.setMaster(). The block only
+   reads APP_DATA when it builds rows, so it can be parsed before data lands. */
+
+/* In the dashboard this switches pages; the block wraps it, so it must exist. */
+window.navigateTo = window.navigateTo || function(page){};
+</script>
+
+<!-- ═══ Jal Mitra Export block, verbatim from the dashboard (lines 5018-5654) ═══ -->
+<script>
+(function () {
+'use strict';
+
+/* ── 0. GUARD ─────────────────────────────────────────────────────────── */
+if (!window.APP_DATA) { console.error('[Jal Mitra] APP_DATA not found — paste this block AFTER the main script.'); return; }
+const _existing = document.getElementById('page-jal-mitra-export');
+if (_existing) _existing.remove();                                   // allow re-paste / refresh
+const _existingNav = document.querySelector('.nav-item[data-page="jal-mitra-export"]');
+if (_existingNav) _existingNav.remove();
+
+const FRC_THRESHOLD     = 0.2;                  // mg/L, FRC at consumer end (IS 10500)
+const JM_SCHEMA_VERSION = 'jal-mitra-ohsr-v2.0';
+
+/* ── 1. DEPARTMENT FORMAT — the contract that ships ───────────────────────
+   13 columns, prescribed order, header text VERBATIM from the Dept's
+   template (lower-case 'frc fhh' etc.). Do not snake_case, reorder or drop.
+   [header, key, type, nullable, description, source/rule]                 */
+const JM_DEPT_SCHEMA = [
+  ['Evidence Action Site ID','ea_site_id','VARCHAR(32)',false,'Evidence Action ILC site identifier. Unique per OHSR; primary key of this file.','deviceInventory.siteId'],
+  ['OHSR ID','ohsr_id','VARCHAR(32)',true,"Department's OHSR asset identifier (SCH…). Sourced from the AP Govt. Asset Master; NULL where the master carries no OHSR ID for the site.",'JM_MASTER[site_id][0]; NULL when unmapped'],
+  ['State','state','VARCHAR(64)',false,'Constant for this export.',"Literal 'Andhra Pradesh'"],
+  ['District','district','VARCHAR(64)',false,'Revenue district.','deviceInventory.district'],
+  ['Mandal','mandal','VARCHAR(64)',false,'Mandal (block).','deviceInventory.block'],
+  ['GP','gp','VARCHAR(128)',false,'Gram Panchayat. Not unique — a GP may contain several OHSRs.','deviceInventory.gpName'],
+  ['Scheme Name','scheme_name','VARCHAR(160)',true,'PWS scheme name. Sourced from the AP Govt. Asset Master; NULL where the master has no row for the site.','JM_MASTER[site_id][1]; NULL when unmapped'],
+  ['Habitation','habitation','VARCHAR(160)',true,'Habitation / colony served by this OHSR. Descriptive only — NOT the row grain.','deviceInventory.schemeName'],
+  ['last reading date','last_reading_date','DATE',true,'Date of the most recent chlorine reading, ISO 8601 (YYYY-MM-DD). NULL where never sampled.','MAX(date) across PM + LMT readings'],
+  ['frc fhh','frc_fhh','DECIMAL(5,2)',true,'Free residual chlorine, first household, mg/L, latest reading.','processMonitoring/lmtData.fcrFHH'],
+  ['frc lhh','frc_lhh','DECIMAL(5,2)',true,'Free residual chlorine, last household, mg/L, latest reading.','processMonitoring/lmtData.fcrLHH'],
+  ['trc fhh','trc_fhh','DECIMAL(5,2)',true,'Total residual chlorine, first household, mg/L, latest reading. NULL where TRC was not tested.','processMonitoring/lmtData.tcrFHH'],
+  ['trc lhh','trc_lhh','DECIMAL(5,2)',true,'Total residual chlorine, last household, mg/L, latest reading. NULL where TRC was not tested.','processMonitoring/lmtData.tcrLHH'],
+];
+const JM_DEPT_HEADERS = JM_DEPT_SCHEMA.map(c => c[0]);
+const JM_UNSOURCED    = [];   // every column now has a source; kept for header flagging
+
+/* ── 2. EXTENDED SCHEMA — Evidence Action internal ────────────────────────
+   Derived per OHSR; the 13 Dept columns are a projection of these.        */
+const JM_EXT_COLUMNS = [
+  'ohsr_id','state','district','block_mandal','gram_panchayat','habitation_scheme_served',
+  'gp_ohsr_count','ohsr_latitude','ohsr_longitude','device_source','bucket_type',
+  'motor_hp_range','tank_capacity_class','tablet_size_g','install_date','device_status',
+  'non_functional_reason','last_reading_date','last_reading_stream','frc_fhh_mgl',
+  'trc_fhh_mgl','frc_lhh_mgl','trc_lhh_mgl','frc_compliance_fhh','frc_compliance_lhh',
+  'first_reading_date','readings_total','readings_with_frc','readings_with_trc',
+  'frc_fhh_mean','frc_fhh_min','frc_fhh_max','trc_fhh_mean','trc_fhh_min','trc_fhh_max',
+  'frc_lhh_mean','frc_lhh_min','frc_lhh_max','trc_lhh_mean','trc_lhh_min','trc_lhh_max',
+  'tablets_issued_total','refill_records','trc_coverage_status','trc_coverage_pct',
+  'export_generated_on','schema_version'
+];
+
+/* ── 2b. AP GOVT ASSET MASTER ─────────────────────────────────────────────
+   site_id -> [ohsr_id, scheme_name], transcribed from the "Jal Mitra Export"
+   tab of the PBI: Govt Dashboard Draft workbook (AP Govt. Asset Master
+   block). 207 of the 213 exported OHSRs are covered; 194 carry an OHSR ID.  */
+let JM_MASTER = {};   /* filled from data/ohsr-master.json via JalMitra.setMaster() */
+let _jmRows = null, _jmReadings = null;
+
+/* ── 3. HELPERS ───────────────────────────────────────────────────────── */
+const jmNum = v => (typeof v === 'number' && isFinite(v)) ? v : null;
+const jmR2  = v => v === null ? null : Math.round(v * 100) / 100;
+const jmCompliance = v => v === null ? 'NOT_TESTED' : (v >= FRC_THRESHOLD ? 'COMPLIANT' : 'NON_COMPLIANT');
+
+/* Asset-master lookups — the only source for columns 2 and 7. */
+const jmOhsrId     = siteId => (JM_MASTER[siteId] || [])[0] || null;
+const jmSchemeName = siteId => (JM_MASTER[siteId] || [])[1] || null;
+
+function jmToday() {
+  const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function jmEsc(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function jmSaveCsv(lines, filename) {
+  const blob = new Blob(['﻿' + lines.join('\r\n') + '\r\n'], { type: 'text/csv;charset=utf-8;' });  // BOM for Excel
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+}
+
+/** Readings keyed by site ID, tagged with stream, sorted oldest -> newest. */
+function jmReadingIndex() {
+  if (_jmReadings) return _jmReadings;
+  const idx = {};
+  const push = (arr, stream) => (arr || []).forEach(r => {
+    if (!r.date) return;
+    (idx[r.site] = idx[r.site] || []).push(Object.assign({}, r, { _stream: stream }));
+  });
+  push(window.APP_DATA.processMonitoring, 'TA_PM');
+  push(window.APP_DATA.lmtData,           'LMT_FIELD');
+  Object.keys(idx).forEach(k => idx[k].sort((x, y) => x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
+  _jmReadings = idx;
+  return idx;
+}
+
+/* ── 4. BUILD — one row per OHSR ──────────────────────────────────────── */
+function buildJalMitraRows() {
+  if (_jmRows) return _jmRows;
+  const inv     = window.APP_DATA.deviceInventory;
+  const idx     = jmReadingIndex();
+  const today   = jmToday();
+  const buckets = {};
+  (window.APP_DATA.bucketTypes || []).forEach(b => buckets[b.bucket] = b);
+
+  const refills = {};
+  (window.APP_DATA.refillTracker || []).forEach(r => {
+    const k = r.siteId || r.site;
+    if (k) (refills[k] = refills[k] || []).push(r);
+  });
+
+  const gpCount = {};
+  inv.forEach(d => gpCount[d.gpName] = (gpCount[d.gpName] || 0) + 1);
+
+  _jmRows = inv.map(d => {
+    const rs     = idx[d.siteId] || [];
+    const latest = rs.length ? rs[rs.length - 1] : {};
+    const b      = buckets[d.bucketType] || {};
+    const rf     = refills[d.siteId] || [];
+
+    const nFrc = rs.filter(x => jmNum(x.fcrFHH) !== null || jmNum(x.fcrLHH) !== null).length;
+    const nTrc = rs.filter(x => jmNum(x.tcrFHH) !== null || jmNum(x.tcrLHH) !== null).length;
+
+    let cov;
+    if (!rs.length)              cov = 'NO_READINGS';
+    else if (nTrc === 0)         cov = 'NONE';
+    else if (nTrc === rs.length) cov = 'FULL';
+    else                         cov = 'PARTIAL';
+
+    const row = {
+      ohsr_id: d.siteId,
+      state: 'Andhra Pradesh',
+      district: d.district || null,
+      block_mandal: d.block || null,
+      gram_panchayat: d.gpName || null,
+      habitation_scheme_served: d.schemeName || null,
+      gp_ohsr_count: gpCount[d.gpName] || 1,
+      ohsr_latitude: jmNum(d.lat),
+      ohsr_longitude: jmNum(d.lng),
+      device_source: d.source || null,
+      bucket_type: d.bucketType || null,
+      motor_hp_range: b.motorHP || null,
+      tank_capacity_class: b.tankSize || null,
+      tablet_size_g: b.tabletSize ? parseFloat(b.tabletSize) : null,
+      install_date: d.installDate || null,
+      device_status: d.status || null,
+      non_functional_reason: d.status !== 'Functional' ? (d.nfReason || null) : null,
+      last_reading_date: latest.date || null,
+      last_reading_stream: latest._stream || null,
+      frc_fhh_mgl: jmNum(latest.fcrFHH),
+      trc_fhh_mgl: jmNum(latest.tcrFHH),
+      frc_lhh_mgl: jmNum(latest.fcrLHH),
+      trc_lhh_mgl: jmNum(latest.tcrLHH),
+      frc_compliance_fhh: rs.length ? jmCompliance(jmNum(latest.fcrFHH)) : null,
+      frc_compliance_lhh: rs.length ? jmCompliance(jmNum(latest.fcrLHH)) : null,
+      first_reading_date: rs.length ? rs[0].date : null,
+      readings_total: rs.length,
+      readings_with_frc: nFrc,
+      readings_with_trc: nTrc,
+      tablets_issued_total: rf.length ? Math.round(rf.reduce((s, x) => s + (x.tabletsQty || 0), 0)) : null,
+      refill_records: rf.length,
+      trc_coverage_status: cov,
+      trc_coverage_pct: rs.length ? Math.round(nTrc / rs.length * 1000) / 10 : null,
+      export_generated_on: today,
+      schema_version: JM_SCHEMA_VERSION,
+    };
+
+    // All-time stats, computed on the non-null subset only.
+    [['fcrFHH','frc_fhh'], ['tcrFHH','trc_fhh'], ['fcrLHH','frc_lhh'], ['tcrLHH','trc_lhh']]
+      .forEach(pair => {
+        const v = rs.map(x => jmNum(x[pair[0]])).filter(x => x !== null);
+        row[pair[1] + '_mean'] = v.length ? jmR2(v.reduce((a, c) => a + c, 0) / v.length) : null;
+        row[pair[1] + '_min']  = v.length ? jmR2(Math.min.apply(null, v)) : null;
+        row[pair[1] + '_max']  = v.length ? jmR2(Math.max.apply(null, v)) : null;
+      });
+
+    return row;
+  }).sort(function (a, b) {
+    // Deterministic, locale-independent: district > mandal > GP > site id,
+    // case-normalised. localeCompare is avoided — its collation varies by
+    // browser/OS, which would make the vendor's row order non-reproducible.
+    const key = r => [(r.district || ''), (r.block_mandal || ''), (r.gram_panchayat || ''), r.ohsr_id]
+                       .map(s => String(s).toUpperCase());
+    const ka = key(a), kb = key(b);
+    for (let i = 0; i < ka.length; i++) {
+      if (ka[i] < kb[i]) return -1;
+      if (ka[i] > kb[i]) return 1;
+    }
+    return 0;
+  });
+
+  return _jmRows;
+}
+
+/** Project the extended rows onto the Department's 13-column format. */
+function buildDeptRows(rows) {
+  return (rows || buildJalMitraRows()).map(r => ({
+    ea_site_id:        r.ohsr_id,                       // EvAc site ID
+    ohsr_id:           jmOhsrId(r.ohsr_id),             // Dept asset ID from the asset master
+    state:             r.state,
+    district:          r.district,
+    mandal:            r.block_mandal,
+    gp:                r.gram_panchayat,
+    scheme_name:       jmSchemeName(r.ohsr_id),         // PWS scheme name from the asset master
+    habitation:        r.habitation_scheme_served,
+    last_reading_date: r.last_reading_date,
+    frc_fhh:           r.frc_fhh_mgl,
+    frc_lhh:           r.frc_lhh_mgl,
+    trc_fhh:           r.trc_fhh_mgl,
+    trc_lhh:           r.trc_lhh_mgl,
+  }));
+}
+
+function ohsrIdMappedCount() {
+  return buildJalMitraRows().filter(r => jmOhsrId(r.ohsr_id)).length;
+}
+
+function schemeNameCount() {
+  return buildJalMitraRows().filter(r => jmSchemeName(r.ohsr_id)).length;
+}
+
+function jmFilteredRows() {
+  const dist = document.getElementById('jm-district').value;
+  return buildJalMitraRows().filter(r => !dist || r.district === dist);
+}
+
+/* ── 5. FOOTER DISCLOSURE ─────────────────────────────────────────────────
+   Not rendered on screen — written into the CSV footer as #-prefixed lines.
+   This is the record of TRC coverage gaps and unsourced columns that travels
+   with the file, so it must stay in step with the schema above.           */
+function jalMitraDisclosure() {
+  const rows = buildJalMitraRows();
+  const cov  = { FULL: 0, PARTIAL: 0, NONE: 0, NO_READINGS: 0 };
+  rows.forEach(r => cov[r.trc_coverage_status]++);
+
+  const invIds = {};
+  window.APP_DATA.deviceInventory.forEach(d => invIds[d.siteId] = 1);
+  const all       = (window.APP_DATA.processMonitoring || []).concat(window.APP_DATA.lmtData || []);
+  const monitored = {};
+  all.forEach(r => { if (r.site) monitored[r.site] = 1; });
+  const orphans = Object.keys(monitored).filter(s => !invIds[s]).sort();
+  const trcRead = all.filter(x => jmNum(x.tcrFHH) !== null || jmNum(x.tcrLHH) !== null).length;
+
+  const mapped  = ohsrIdMappedCount();
+  const schemed = schemeNameCount();
+  const gpc = {};
+  rows.forEach(r => gpc[r.gram_panchayat] = (gpc[r.gram_panchayat] || 0) + 1);
+  const gpMulti = Object.keys(gpc).filter(k => gpc[k] > 1).length;
+
+  return [
+    ['DISCLOSURE', 'TRC (total residual chlorine) coverage, column sources and export boundaries. Read before using this file.'],
+    ['Rows in this file', rows.length + ' OHSRs (one row per OHSR; a Gram Panchayat may contain more than one)'],
+    ['Row grain', 'One ILC-equipped OHSR = one row. "Habitation" is descriptive only and is NOT the row grain — do not use it, or "GP", as a key: ' + gpMulti + ' GPs in this file contain more than one OHSR. Join on "Evidence Action Site ID".'],
+    ['Column: OHSR ID', mapped === rows.length
+      ? 'Fully populated — all ' + rows.length + ' rows resolved from the AP Govt. Asset Master.'
+      : mapped + ' of ' + rows.length + ' rows populated from the AP Govt. Asset Master; the remaining ' + (rows.length - mapped) + ' are NULL because the master carries no OHSR ID for those sites. The column is emitted regardless so the ingest schema binds. The Department should complete the master for the unresolved sites.'],
+    ['Column: Scheme Name', schemed + ' of ' + rows.length + ' rows populated from the AP Govt. Asset Master' + (schemed === rows.length ? '.' : '; the remaining ' + (rows.length - schemed) + ' are NULL because the master has no row for those sites.') + ' Values in "Habitation" are a different level of the hierarchy and must NOT be substituted here.'],
+    ['TRC column policy', '"trc fhh" and "trc lhh" are always present. Where TRC was not tested the cell is NULL, not zero and not blank-omitted. Do not impute.'],
+    ['TRC coverage: FULL', cov.FULL + ' OHSRs — TRC recorded on every reading'],
+    ['TRC coverage: PARTIAL', cov.PARTIAL + ' OHSRs — TRC recorded on some readings only'],
+    ['TRC coverage: NONE', cov.NONE + ' OHSRs — sampled but TRC never recorded; TRC values are NULL by design'],
+    ['TRC coverage: NO_READINGS', cov.NO_READINGS + ' OHSRs — no chlorine reading on record; all reading columns are NULL'],
+    ['Reading-level TRC rate', trcRead + ' of ' + all.length + ' reading records carry a TRC value (' + (all.length ? (trcRead / all.length * 100).toFixed(1) : '0.0') + '%)'],
+    ['Excluded site IDs', orphans.length + ' site IDs appear in monitoring data but are absent from the device inventory and are NOT exported, pending asset reconciliation: ' + (orphans.length ? orphans.join(', ') : 'none')],
+    ['Null semantics', 'Empty cell = not recorded. 0 is a measured value and is never used as a placeholder.'],
+    ['Reading basis', '"frc"/"trc" columns carry the LATEST reading per OHSR as at "last reading date", not an average. Chlorine is assessed against FRC >= ' + FRC_THRESHOLD.toFixed(2) + ' mg/L at the consumer end; a null FRC is untested, not failing.'],
+    ['Units', 'All chlorine values in mg/L. All dates ISO 8601 (YYYY-MM-DD).'],
+    ['Schema stability', JM_SCHEMA_VERSION + '. 13 columns, in the Department’s prescribed order, with header text reproduced verbatim (lower-case "frc fhh", "trc lhh" etc.). Column names, order and count are frozen. Future change is additive (appended) with a version bump; columns are never renamed, reordered or dropped.'],
+    ['Parsing note (CSV)', "Lines beginning with '#' are footer disclosure, not data. Skip them on ingest."],
+    ['Generated', jmToday()],
+  ];
+}
+
+/* ── 6. DOWNLOADS ─────────────────────────────────────────────────────── */
+function downloadDeptCsv(filtered) {
+  const rows  = buildDeptRows(filtered ? jmFilteredRows() : null);
+  const lines = [JM_DEPT_HEADERS.map(jmEsc).join(',')];
+  rows.forEach(r => lines.push(JM_DEPT_SCHEMA.map(c => jmEsc(r[c[1]])).join(',')));
+  lines.push('#');
+  jalMitraDisclosure().forEach(d => lines.push('# ' + d[0] + ': ' + d[1]));
+  jmSaveCsv(lines, 'jal_mitra_export_' + (filtered ? 'filtered_' : '') + jmToday() + '.csv');
+}
+
+function downloadExtendedCsv() {
+  const rows  = buildJalMitraRows();
+  const lines = [JM_EXT_COLUMNS.join(',')];
+  rows.forEach(r => lines.push(JM_EXT_COLUMNS.map(c => jmEsc(r[c])).join(',')));
+  lines.push('#');
+  jalMitraDisclosure().forEach(d => lines.push('# ' + d[0] + ': ' + d[1]));
+  jmSaveCsv(lines, 'ap_isw_extended_' + jmToday() + '.csv');
+}
+
+/* ── 8. RENDER ────────────────────────────────────────────────────────── */
+function renderJalMitraPage() {
+  const rows = buildJalMitraRows();
+
+  const ds = document.getElementById('jm-district');
+  if (ds.options.length <= 1) {
+    const seen = {};
+    rows.forEach(r => { if (r.district) seen[r.district] = 1; });
+    Object.keys(seen).sort().forEach(d => ds.innerHTML += '<option value="' + d + '">' + d + '</option>');
+  }
+
+  renderJalMitraPreview();
+}
+
+function renderJalMitraPreview() {
+  const dept = buildDeptRows(jmFilteredRows());
+
+  document.getElementById('jm-preview-head').innerHTML = JM_DEPT_SCHEMA.map(c =>
+    '<th class="jm-mono" style="text-transform:none;letter-spacing:0;' +
+    (JM_UNSOURCED.indexOf(c[1]) > -1 ? 'background:#b3651a;' : '') + '"' +
+    ' title="' + c[4].replace(/"/g, '&quot;') + '">' + c[0] + '</th>').join('');
+
+  const nul = '<span class="jm-pill">NULL</span>';
+  const fmt = v => (v === null || v === undefined || v === '') ? nul : v;
+  const frc = v => v === null ? nul : '<span class="' + (v >= FRC_THRESHOLD ? 'frc-good' : 'frc-bad') + '">' + v.toFixed(2) + '</span>';
+  const dec = v => v === null ? nul : v.toFixed(2);
+
+  document.getElementById('jm-preview-body').innerHTML = dept.map(r =>
+    '<tr><td class="jm-mono">' + r.ea_site_id + '</td><td class="jm-mono">' + fmt(r.ohsr_id) + '</td>' +
+    '<td>' + r.state + '</td><td>' + r.district + '</td><td>' + r.mandal + '</td><td>' + r.gp + '</td>' +
+    '<td>' + fmt(r.scheme_name) + '</td><td>' + fmt(r.habitation) + '</td>' +
+    '<td>' + fmt(r.last_reading_date) + '</td>' +
+    '<td>' + frc(r.frc_fhh) + '</td><td>' + frc(r.frc_lhh) + '</td>' +
+    '<td>' + dec(r.trc_fhh) + '</td><td>' + dec(r.trc_lhh) + '</td></tr>').join('') ||
+    '<tr><td colspan="' + JM_DEPT_HEADERS.length + '" style="text-align:center;color:var(--text-muted);padding:20px;">No rows match the current filter.</td></tr>';
+
+  document.getElementById('jm-preview-count').textContent = dept.length;
+}
+
+/* ── 9. STYLES ────────────────────────────────────────────────────────────
+   The page is a flex column. Without flex:0 0 auto the cards get squashed
+   by the flex layout and their tables clip mid-row, so pin every direct
+   child to its natural height and let the table scroll on its own axes.  */
+const style = document.createElement('style');
+style.textContent = [
+  '#page-jal-mitra-export{gap:16px;padding-bottom:24px;}',
+  '#page-jal-mitra-export > *{flex:0 0 auto;}',
+  '#page-jal-mitra-export .table-card{overflow:visible;}',
+  '#page-jal-mitra-export .kpi-row{flex-wrap:wrap;}',
+  '.jm-scroll{max-height:60vh;overflow:auto;border:1px solid var(--border);border-radius:6px;}',
+  '.jm-scroll table.data-table th{position:sticky;top:0;z-index:2;}',
+  '.jm-btn{padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s;white-space:nowrap;}',
+  '.jm-btn:hover{background:#cf6d0f;}',
+  '.jm-btn.alt{background:var(--primary);}.jm-btn.alt:hover{background:var(--primary-dk);}',
+  '.jm-mono{font-family:Consolas,"Courier New",monospace;font-size:11.5px;}',
+  '.jm-pill{background:#eceff3;color:#6b7a8d;border-radius:3px;padding:1px 5px;font-size:10.5px;font-weight:600;}'
+].join('\n');
+document.head.appendChild(style);
+
+/* ── 10. NAV ITEM (above Resources, else appended) ────────────────────── */
+const navItem = document.createElement('div');
+navItem.className = 'nav-item';
+navItem.setAttribute('data-page', 'jal-mitra-export');
+navItem.innerHTML = '<span class="nav-icon">📤</span><span class="nav-label">Jal Mitra Export</span>';
+navItem.addEventListener('click', () => navigateTo('jal-mitra-export'));
+const navAnchor = document.querySelector('.nav-item[data-page="resources"]');
+if (navAnchor) navAnchor.parentNode.insertBefore(navItem, navAnchor);
+else {
+  const anyNav = document.querySelector('.nav-item');
+  if (anyNav) anyNav.parentNode.appendChild(navItem);
+}
+
+/* ── 11. PAGE ─────────────────────────────────────────────────────────── */
+const page = document.createElement('div');
+page.className = 'page';
+page.id = 'page-jal-mitra-export';
+page.innerHTML = [
+'<div class="page-header"><h2>Jal Mitra Export</h2><p>Locked handover table for the Department’s IT vendor — one row per OHSR, fixed 13-column contract</p></div>',
+
+'<div class="filter-bar" style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:10px;">',
+'  <div style="display:flex;gap:10px;flex-wrap:wrap;">',
+'    <div class="filter-group"><label>District</label><select id="jm-district"><option value="">All Districts</option></select></div>',
+'  </div>',
+'  <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">',
+'    <button class="jm-btn" id="jm-dl-dept">⬇ Dept format (13 cols)</button>',
+'    <button class="jm-btn alt" id="jm-dl-filtered">⬇ Filtered view</button>',
+'    <button class="jm-btn alt" id="jm-dl-ext" title="Evidence Action internal — 47 analysis columns">⬇ Extended (47 cols)</button>',
+'  </div>',
+'</div>',
+
+'<div class="table-card">',
+'  <h3 style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">Export Preview',
+'    <span style="font-weight:400;color:var(--text-muted);font-size:11px;">— all 13 columns, <span id="jm-preview-count">—</span> rows. OHSR ID and Scheme Name are sourced from the AP Govt. Asset Master and are NULL only where the master has no value; the CSV footer records the counts. Hover any header for its definition.</span>',
+'  </h3>',
+'  <div class="jm-scroll">',
+'    <table class="data-table"><thead><tr id="jm-preview-head"></tr></thead><tbody id="jm-preview-body"></tbody></table>',
+'  </div>',
+'</div>'
+].join('\n');
+
+const main = document.getElementById('main');
+if (main) main.appendChild(page);
+else { console.error('[Jal Mitra] #main not found.'); return; }
+
+/* ── 12. EVENTS ───────────────────────────────────────────────────────── */
+document.getElementById('jm-district').addEventListener('change', renderJalMitraPreview);
+document.getElementById('jm-dl-dept').addEventListener('click', () => downloadDeptCsv(false));
+document.getElementById('jm-dl-filtered').addEventListener('click', () => downloadDeptCsv(true));
+document.getElementById('jm-dl-ext').addEventListener('click', downloadExtendedCsv);
+
+/* ── 13. HOOK navigateTo (wrap, don't modify) ─────────────────────────── */
+const _origNavigateTo = window.navigateTo;
+window.navigateTo = function (p) {
+  _origNavigateTo(p);
+  if (p === 'jal-mitra-export') renderJalMitraPage();
+};
+
+/* Console access without polluting the page's own names.
+   setMaster/resetCache/render are the seams the live-refresh block uses to
+   push a new asset master in and redraw, since JM_MASTER and the row caches
+   are private to this closure. */
+window.JalMitra = {
+  buildRows: buildJalMitraRows,
+  buildDeptRows: buildDeptRows,
+  disclosure: jalMitraDisclosure,
+  downloadDept: downloadDeptCsv,
+  downloadExtended: downloadExtendedCsv,
+  version: JM_SCHEMA_VERSION,
+  setMaster: function (m) { if (m && Object.keys(m).length) { JM_MASTER = m; _jmRows = null; _jmReadings = null; } },
+  resetCache: function () { _jmRows = null; _jmReadings = null; },
+  render: function () { if (document.getElementById('page-jal-mitra-export')) renderJalMitraPage(); }
+};
+
+})();
+</script>
+
+<script>
+/* The block appends its .page without the 'active' class, because in the dashboard
+   navigateTo() adds it. Standalone, there is only this page — show it and draw.
+   setMaster() hands the asset master into the block's closure and clears its row
+   cache, so the first render already has the OHSR IDs and scheme names. */
+ISWData.load('deviceInventory','processMonitoring','lmtData','refillTracker','bucketTypes','ohsrMaster')
+  .then(data=>{
+    const page=document.getElementById('page-jal-mitra-export');
+    if(page) page.classList.add('active');
+    if(window.JalMitra){
+      window.JalMitra.setMaster(data.ohsrMaster);
+      window.JalMitra.render();
+    }
+  });
+</script>
+</body>
+</html>

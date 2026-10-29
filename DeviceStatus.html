@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ILC Device Status</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--green:#2e8b57;--red:#c0392b;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:14px;}
+
+/* ── page header ── */
+.page-header{background:var(--surface);border-radius:8px;padding:14px 20px;border-left:4px solid var(--primary);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.page-header h2{font-size:16px;color:var(--primary);font-weight:700;}
+.page-header p{font-size:12px;color:var(--text-muted);margin-top:2px;}
+
+/* ── layout ── */
+.chart-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;}
+.chart-row.stretch{align-items:stretch;flex:1;min-height:0;}
+.chart-card{flex:1;min-width:280px;background:var(--surface);border-radius:8px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;}
+.chart-card h3{font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;}
+.chart-wrap{position:relative;width:100%;display:flex;flex-direction:column;min-height:0;}
+
+/* ── legend ── */
+.legend-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:12px;}
+.legend-dot{width:10px;height:10px;border-radius:50%;}
+
+/* ── District / Block toggle ── */
+.toggle-group{display:flex;gap:0;border:1px solid var(--primary);border-radius:5px;overflow:hidden;width:fit-content;}
+.toggle-btn{padding:5px 16px;font-size:12px;cursor:pointer;border:none;background:white;color:var(--primary);font-weight:600;}
+.toggle-btn.active{background:var(--primary);color:white;}
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="page" id="page-device-status" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+  <div class="page-header"><h2>ILC Device Status</h2><p>Operational status breakdown by district and block</p></div>
+  <div class="chart-row stretch" style="flex:1;min-height:0;">
+    <div class="chart-card" style="flex:0 0 340px;display:flex;flex-direction:column;">
+      <h3>Status of ILC Devices</h3>
+      <div class="chart-wrap" style="flex:1;min-height:0;"><canvas id="chart-status-donut"></canvas></div>
+      <div class="legend-row" style="margin-top:8px;justify-content:center;">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Functional</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Non-Functional</div>
+      </div>
+    </div>
+    <div class="chart-card" style="flex:1;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h3 style="margin:0;" id="bar-chart-title">Sites by District</h3>
+        <div class="toggle-group">
+          <button class="toggle-btn active" onclick="switchBarChart('district')">District</button>
+          <button class="toggle-btn" onclick="switchBarChart('block')">Block</button>
+        </div>
+      </div>
+      <div class="chart-wrap" style="flex:1;min-height:0;"><canvas id="chart-sites-bar"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* Device inventory — 213 rows, copied from the dashboard's APP_DATA.deviceInventory. */
+/* deviceInventory comes from data/device-inventory.json via js/data-loader.js */
+
+/* Metrics, derived exactly as the dashboard derives them. Runs after the
+   inventory has loaded, not at parse time.
+   Note: 194 Functional + 13 Non-Functional = 207; the remaining rows
+   carry some other status value and fall outside both slices. */
+function computeMetrics(){
+  const inv = window.APP_DATA.deviceInventory;
+  window.APP_DATA.metrics = {
+    totalSites:         inv.length,
+    totalDistricts:     [...new Set(inv.map(d=>d.district))].length,
+    totalBlocks:        [...new Set(inv.map(d=>d.block))].length,
+    functionalSites:    inv.filter(d=>d.status==="Functional").length,
+    nonFunctionalSites: inv.filter(d=>d.status==="Non-Functional").length,
+  };
+}
+
+let chartInstances={};
+
+// ── CHART HELPERS ──
+function destroyChart(id){if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];}}
+
+function renderColorBarChart(id,labels,data,bgColors,bdColors,distGroups,distColorMap){
+  destroyChart(id);
+  const ctx=document.getElementById(id).getContext('2d');
+  const barLabelPlugin2={
+    id:'barLabels2',
+    afterDatasetsDraw(chart){
+      const {ctx,data}=chart;
+      chart.data.datasets.forEach((ds,i)=>{
+        chart.getDatasetMeta(i).data.forEach((bar,idx)=>{
+          const v=ds.data[idx];
+          if(!v) return;
+          ctx.save();
+          ctx.fillStyle='#1a2535';
+          ctx.font='bold 10px sans-serif';
+          ctx.textAlign='center';
+          ctx.textBaseline='bottom';
+          ctx.fillText(v,bar.x,bar.y-3);
+          ctx.restore();
+        });
+      });
+    }
+  };
+  // Build legend for district groups in block view
+  const plugins={legend:{display:false}};
+  if(distGroups&&distColorMap){
+    plugins.legend={
+      display:true,
+      position:'top',
+      labels:{
+        generateLabels:()=>distGroups.map((d,i)=>({
+          text:d,
+          fillStyle:distColorMap[d]+'cc',
+          strokeStyle:distColorMap[d],
+          lineWidth:1,
+          hidden:false
+        })),
+        font:{size:11},
+        usePointStyle:true,
+        pointStyle:'rect'
+      }
+    };
+  }
+  chartInstances[id]=new Chart(ctx,{
+    type:'bar',
+    data:{labels,datasets:[{label:'Sites',data,backgroundColor:bgColors,borderColor:bdColors,borderWidth:1,borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:20}},
+      plugins,
+      scales:{
+        y:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'},ticks:{font:{size:10}}},
+        x:{grid:{display:false},ticks:{font:{size:9},maxRotation:55}}
+      }
+    },
+    plugins:[barLabelPlugin2]
+  });
+}
+
+// ── DEVICE STATUS CHARTS ──
+function renderDeviceStatusCharts(){
+  const m=window.APP_DATA.metrics;
+  destroyChart('chart-status-donut');
+  const ctx=document.getElementById('chart-status-donut').getContext('2d');
+  const donutLabelPlugin={
+    id:'donutLabels',
+    afterDatasetsDraw(chart){
+      const {ctx,data}=chart;
+      const total=data.datasets[0].data.reduce((a,b)=>a+b,0);
+      const meta=chart.getDatasetMeta(0);
+      meta.data.forEach((arc,i)=>{
+        const val=data.datasets[0].data[i];
+        const pct=Math.round(val/total*100);
+        const pos=arc.tooltipPosition();
+        ctx.save();
+        ctx.fillStyle='white';
+        ctx.textAlign='center';
+        ctx.textBaseline='middle';
+        if(pct>=8){
+          ctx.font='bold 13px sans-serif';
+          ctx.fillText(val,pos.x,pos.y-8);
+          ctx.font='11px sans-serif';
+          ctx.fillText(pct+'%',pos.x,pos.y+8);
+        } else {
+          // Small segment — compact label inside
+          ctx.font='bold 10px sans-serif';
+          ctx.fillText(val,pos.x,pos.y-6);
+          ctx.font='9px sans-serif';
+          ctx.fillText(pct+'%',pos.x,pos.y+6);
+        }
+        ctx.restore();
+      });
+    }
+  };
+  chartInstances['chart-status-donut']=new Chart(ctx,{
+    type:'doughnut',
+    data:{labels:['Functional','Non-Functional'],datasets:[{data:[m.functionalSites,m.nonFunctionalSites],backgroundColor:['#2e8b57','#c0392b'],borderWidth:2}]},
+    options:{plugins:{legend:{position:'bottom',labels:{font:{size:12},generateLabels(chart){const d=chart.data;return d.labels.map((l,i)=>({text:`${l}: ${d.datasets[0].data[i]}`,fillStyle:d.datasets[0].backgroundColor[i],strokeStyle:d.datasets[0].backgroundColor[i],lineWidth:0,hidden:false,index:i}));}}},cutout:'65%'}},
+    plugins:[donutLabelPlugin]
+  });
+  switchBarChart('district');
+}
+
+let barChartMode='district';
+
+  const DIST_COLORS=['#1565c0','#2e7d32','#e65100','#6a1b9a','#00695c','#c62828','#4527a0','#558b2f','#f57f17','#0277bd'];
+function switchBarChart(mode){
+  barChartMode=mode;
+  const inv=window.APP_DATA.deviceInventory;
+  document.getElementById('bar-chart-title').textContent=mode==='district'?'Sites by District':'Sites by Block';
+  document.querySelectorAll('.toggle-btn').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase()===mode));
+  destroyChart('chart-sites-bar');
+
+  if(mode==='district'){
+    // Count per district, sort descending
+    const counts={};
+    inv.forEach(d=>{if(d.district) counts[d.district]=(counts[d.district]||0)+1;});
+    const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    const labels=sorted.map(e=>e[0]);
+    const data=sorted.map(e=>e[1]);
+    // Assign distinct color per district
+    const distList=[...new Set(inv.map(d=>d.district).filter(Boolean))].sort();
+    const distColorMap={};
+    distList.forEach((d,i)=>distColorMap[d]=DIST_COLORS[i%DIST_COLORS.length]);
+    const bgColors=labels.map(l=>distColorMap[l]+'cc');
+    const bdColors=labels.map(l=>distColorMap[l]);
+    renderColorBarChart('chart-sites-bar',labels,data,bgColors,bdColors);
+
+  } else {
+    // Block view: group blocks by district, sort districts by total desc, then blocks within district desc
+    const blockDist={};  // block -> district
+    const blockCount={};
+    const distCount={};
+    inv.forEach(d=>{
+      if(!d.block) return;
+      blockDist[d.block]=d.district;
+      blockCount[d.block]=(blockCount[d.block]||0)+1;
+      distCount[d.district]=(distCount[d.district]||0)+1;
+    });
+    // Sort districts by count desc
+    const distsSorted=Object.entries(distCount).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+    // Assign color per district
+    const distColorMap={};
+    distsSorted.forEach((d,i)=>distColorMap[d]=DIST_COLORS[i%DIST_COLORS.length]);
+    // Sort blocks: group by district order, then by count desc within district
+    const blocksSorted=[];
+    distsSorted.forEach(dist=>{
+      const blocks=Object.entries(blockCount)
+        .filter(([b])=>blockDist[b]===dist)
+        .sort((a,b)=>b[1]-a[1]);
+      blocks.forEach(([b,c])=>blocksSorted.push({block:b,count:c,district:dist}));
+    });
+    const labels=blocksSorted.map(e=>e.block);
+    const data=blocksSorted.map(e=>e.count);
+    const bgColors=blocksSorted.map(e=>distColorMap[e.district]+'cc');
+    const bdColors=blocksSorted.map(e=>distColorMap[e.district]);
+    renderColorBarChart('chart-sites-bar',labels,data,bgColors,bdColors,distsSorted,distColorMap);
+  }
+}
+
+ISWData.load('deviceInventory').then(()=>{
+  computeMetrics();
+  renderDeviceStatusCharts();
+});
+</script>
+</body>
+</html>

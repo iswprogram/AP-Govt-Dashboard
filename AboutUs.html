@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About Us — AP ISW</title>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:14px;}
+
+/* ── layout ── */
+.chart-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;}
+.chart-row.stretch{align-items:stretch;flex:1;min-height:0;}
+
+/* ── text cards ── */
+.text-card{background:var(--surface);border-radius:8px;padding:28px 32px;box-shadow:0 1px 4px rgba(0,0,0,.07);line-height:1.85;font-size:15px;}
+.text-card h3{font-size:19px;font-weight:700;color:var(--primary);margin-bottom:14px;}
+.text-card p{margin-bottom:14px;color:var(--text);}
+.text-card ul{padding-left:20px;margin-bottom:14px;}
+.text-card li{margin-bottom:8px;}
+
+/* ── optional page header (not shown in the screenshot; uncomment the markup below to use) ── */
+.page-header{background:var(--surface);border-radius:8px;padding:14px 20px;border-left:4px solid var(--primary);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.page-header h2{font-size:16px;color:var(--primary);font-weight:700;}
+.page-header p{font-size:12px;color:var(--text-muted);margin-top:2px;}
+</style>
+</head>
+<body>
+
+<!-- <div class="page-header"><h2>About Us</h2><p>Evidence Action — India Safe Water (ISW) Programme</p></div> -->
+
+<div class="chart-row stretch" style="flex:1;min-height:0;">
+
+  <div class="text-card" style="flex:1;display:flex;flex-direction:column;">
+    <h3>About Evidence Action</h3>
+    <p>Evidence Action scales evidence-based and cost-effective programmes to improve lives. The organisation operates at scale and rigorously monitors impact to ensure interventions deliver measurable outcomes for the communities they serve.</p>
+    <p>In Andhra Pradesh, Evidence Action (EvAc) partners with the state government under the Jal Jeevan Mission to deploy and monitor Inline Chlorination (ILC) devices across rural water supply schemes.</p>
+  </div>
+
+  <div class="text-card" style="flex:1;">
+    <h3>About the ISW Programme</h3>
+    <p>The India Safe Water (ISW) programme ensures continuous, automated chlorination of piped water at the point of distribution — eliminating manual dosing variability and reducing water-borne disease burden.</p>
+    <ul>
+      <li>Automated inline chlorination at scheme level</li>
+      <li>Tablet-based calcium hypochlorite dispensing (ILC buckets)</li>
+      <li>Monitoring via TA and LMT field visits</li>
+      <li>Free Residual Chlorine (FRC) &amp; Total Residual Chlorine (TRC) tracked</li>
+    </ul>
+  </div>
+
+  <div class="text-card" style="flex:1;">
+    <h3>Our Model</h3>
+    <p>The ILC system operates through a bucket-based dispenser installed at the pump head. Chlorine tablets dissolve as water flows, maintaining safe residual chlorine levels at both first-household (FHH) and last-household (LHH) taps.</p>
+    <p>Field teams conduct Technical Assessment (TA) and Last-Mile Testing (LMT) visits to verify device performance and water quality compliance.</p>
+  </div>
+
+</div>
+
+</body>
+</html>

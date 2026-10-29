@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TA Chlorination — FRC &amp; TRC Values</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--green:#2e8b57;--red:#c0392b;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);padding:14px;}
+
+/* ── page header ── */
+.page-header{background:var(--surface);border-radius:8px;padding:14px 20px;border-left:4px solid var(--primary);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.page-header h2{font-size:16px;color:var(--primary);font-weight:700;}
+.page-header p{font-size:12px;color:var(--text-muted);margin-top:2px;}
+
+/* ── filter bar ── */
+.filter-bar{background:var(--surface);border-radius:8px;padding:12px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:14px;}
+.filter-group{display:flex;flex-direction:column;gap:4px;}
+.filter-group label{font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+.filter-group select,.filter-group input{padding:6px 10px;border:1px solid var(--border);border-radius:5px;font-size:12px;color:var(--text);background:white;min-width:130px;}
+.filter-group select:focus,.filter-group input:focus{outline:none;border-color:var(--primary);}
+
+/* ── chart cards ── */
+.chart-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;}
+.chart-card{flex:1;min-width:280px;background:var(--surface);border-radius:8px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;}
+.chart-card.half{flex:1 1 calc(50% - 8px);min-width:280px;}
+.chart-card h3{font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;}
+.chart-wrap{position:relative;width:100%;display:flex;flex-direction:column;min-height:0;}
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="page" id="page-ta-chlorination">
+  <div class="page-header"><h2>TA Chlorination — FRC &amp; TRC Values</h2><p>Free Residual Chlorine (FRC) and Total Residual Chlorine (TRC) readings at First Household (FHH) and Last Household (LHH)</p></div>
+  <div class="filter-bar">
+    <div class="filter-group"><label>District</label><select id="ta-district" onchange="updateTAFilters()"><option value="">All Districts</option></select></div>
+    <div class="filter-group"><label>Block</label><select id="ta-block" onchange="updateTAGPFilter()"><option value="">All Blocks</option></select></div>
+    <div class="filter-group"><label>GP Name</label><select id="ta-gp" onchange="updateTASiteFilter()"><option value="">All GPs</option></select></div>
+    <div class="filter-group"><label>Site</label><select id="ta-site" onchange="renderTACharts()"><option value="">All Sites</option></select></div>
+    <div class="filter-group"><label>Date From</label><input type="date" id="ta-date-from" onchange="renderTACharts()"></div>
+    <div class="filter-group"><label>Date To</label><input type="date" id="ta-date-to" onchange="renderTACharts()"></div>
+  </div>
+
+  <!-- Site Info Card (shown only when a single site is selected) -->
+  <div id="ta-site-detail-card" style="display:none;background:#e3f2fd;border:1px solid #90caf9;border-radius:10px;padding:14px 20px;margin-bottom:14px;">
+    <div style="text-align:center;font-weight:700;color:#0d47a1;font-size:14px;margin-bottom:12px;letter-spacing:.5px;">Site Information</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 16px;text-align:center;min-width:110px;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;">Site</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="ta-si-site">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 16px;text-align:center;min-width:130px;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;">Date of Installation</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="ta-si-date">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 16px;text-align:center;min-width:110px;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;">District</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="ta-si-district">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 16px;text-align:center;min-width:110px;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;">Block</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="ta-si-block">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 16px;text-align:center;min-width:130px;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;">Gram Panchayat</div>
+        <div style="font-size:13px;font-weight:700;color:#1565c0;" id="ta-si-gp">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 16px;text-align:center;min-width:130px;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;">Operational Status</div>
+        <div style="font-size:13px;font-weight:700;color:#2e7d32;" id="ta-si-status">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 16px;text-align:center;min-width:140px;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;">Chlorine Demand (latest)</div>
+        <div style="font-size:13px;font-weight:700;color:#7b1fa2;" id="ta-si-demand">&mdash;</div>
+      </div>
+      <div style="background:#fff;border:1px solid #bbdefb;border-radius:8px;padding:8px 16px;text-align:center;min-width:140px;">
+        <div style="font-size:10px;color:#666;margin-bottom:4px;">Chlorine Decay (latest)</div>
+        <div style="font-size:13px;font-weight:700;color:#e65100;" id="ta-si-decay">&mdash;</div>
+      </div>
+    </div>
+  </div>
+  <div class="chart-row">
+    <div class="chart-card half" style="background:#e3f2fd;border:1px solid #90caf9;">
+      <h3 style="color:#1565c0;font-size:14px;font-weight:700;">Free Residual Chlorine (FRC) readings at FHH and LHH</h3>
+      <div class="chart-wrap" style="height:300px;"><canvas id="chart-ta-frc"></canvas></div>
+    </div>
+    <div class="chart-card half" style="background:#e3f2fd;border:1px solid #90caf9;">
+      <h3 style="color:#6a1b9a;font-size:14px;font-weight:700;">Total Residual Chlorine (TRC) readings at FHH and LHH</h3>
+      <div class="chart-wrap" style="height:300px;"><canvas id="chart-ta-trc"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* TA readings — 2,850 rows, copied from the dashboard's APP_DATA.processMonitoring. */
+/* processMonitoring comes from data/process-monitoring.json */
+
+/* Device inventory — 213 rows. Needed here for the GP filter (which maps site -> gpName)
+   and for the Site Information card. */
+/* deviceInventory comes from data/device-inventory.json */
+
+let chartInstances={};
+function destroyChart(id){if(chartInstances[id]){chartInstances[id].destroy();delete chartInstances[id];}}
+
+function subtractDays(dateStr, days){
+  const d=new Date(dateStr);
+  d.setDate(d.getDate()-days);
+  return d.toISOString().split('T')[0];
+}
+
+/* The dashboard's populateFilters() fills several pages at once;
+   this is the slice of it that belongs to TA Chlorination. */
+function populateFilters(){
+  const pm=window.APP_DATA.processMonitoring;
+  const taDistricts=[...new Set(pm.map(d=>d.district))].filter(Boolean).sort();
+  const taDist=document.getElementById('ta-district');
+  taDistricts.forEach(d=>taDist.innerHTML+=`<option value="${d}">${d}</option>`);
+
+  const taDates=pm.map(d=>d.date).filter(Boolean).sort();
+  if(taDates.length){
+    document.getElementById('ta-date-to').value=taDates[taDates.length-1];
+    document.getElementById('ta-date-from').value=subtractDays(taDates[taDates.length-1],15);
+  }
+}
+
+// ── TA FILTERS ──
+function updateTAFilters(){
+  const dist=document.getElementById('ta-district').value;
+  const pm=window.APP_DATA.processMonitoring;
+  const rows=dist?pm.filter(d=>d.district===dist):pm;
+  const blockSel=document.getElementById('ta-block');
+  const blocks=[...new Set(rows.map(d=>d.block))].filter(Boolean).sort();
+  blockSel.innerHTML='<option value="">All Blocks</option>';
+  blocks.forEach(b=>blockSel.innerHTML+=`<option value="${b}">${b}</option>`);
+  updateTASiteFilter();
+}
+
+function updateTAGPFilter(){
+  const dist=document.getElementById('ta-district').value;
+  const block=document.getElementById('ta-block').value;
+  const inv=window.APP_DATA.deviceInventory;
+  const pm=window.APP_DATA.processMonitoring;
+  // Sites that match district+block in processMonitoring
+  let pmRows=dist?pm.filter(d=>d.district===dist):pm;
+  if(block) pmRows=pmRows.filter(d=>d.block===block);
+  const validSites=new Set(pmRows.map(d=>d.site).filter(Boolean));
+  // Get GPs for those sites from inventory
+  const gpSel=document.getElementById('ta-gp');
+  const curGP=gpSel.value;
+  const gps=[...new Set(inv.filter(d=>validSites.has(d.siteId)&&d.gpName).map(d=>d.gpName))].sort();
+  gpSel.innerHTML='<option value="">All GPs</option>';
+  gps.forEach(g=>gpSel.innerHTML+=`<option value="${g}"${g===curGP?' selected':''}>${g}</option>`);
+  updateTASiteFilter();
+}
+
+function updateTASiteFilter(){
+  const dist=document.getElementById('ta-district').value;
+  const block=document.getElementById('ta-block').value;
+  const gp=(document.getElementById('ta-gp')||{}).value||'';
+  const pm=window.APP_DATA.processMonitoring;
+  const inv=window.APP_DATA.deviceInventory;
+  let rows=dist?pm.filter(d=>d.district===dist):pm;
+  if(block) rows=rows.filter(d=>d.block===block);
+  // Filter by GP: get site IDs belonging to selected GP
+  if(gp){
+    const gpSites=new Set(inv.filter(d=>d.gpName===gp).map(d=>d.siteId));
+    rows=rows.filter(d=>gpSites.has(d.site));
+  }
+  const siteSel=document.getElementById('ta-site');
+  const sites=[...new Set(rows.map(d=>d.site))].filter(Boolean).sort();
+  siteSel.innerHTML='<option value="">All Sites</option>';
+  sites.forEach(s=>siteSel.innerHTML+=`<option value="${s}">${s}</option>`);
+  renderTACharts();
+}
+
+// ── TA CHARTS ──
+function renderTACharts(){
+  const dist=document.getElementById('ta-district').value;
+  const block=document.getElementById('ta-block').value;
+  const site=document.getElementById('ta-site').value;
+  const from=document.getElementById('ta-date-from').value;
+  const to=document.getElementById('ta-date-to').value;
+
+  const gp=(document.getElementById('ta-gp')||{}).value||'';
+  let rows=window.APP_DATA.processMonitoring;
+  if(dist) rows=rows.filter(d=>d.district===dist);
+  if(block) rows=rows.filter(d=>d.block===block);
+  if(gp){
+    const gpSites=new Set(window.APP_DATA.deviceInventory.filter(d=>d.gpName===gp).map(d=>d.siteId));
+    rows=rows.filter(d=>gpSites.has(d.site));
+  }
+  if(site) rows=rows.filter(d=>d.site===site);
+  if(from) rows=rows.filter(d=>d.date>=from);
+  if(to) rows=rows.filter(d=>d.date<=to);
+  rows=rows.filter(d=>d.date).sort((a,b)=>a.date.localeCompare(b.date));
+
+  // Site information card — show only when a single site is selected
+  const siteCard=document.getElementById('ta-site-detail-card');
+  if(site){
+    const inv=window.APP_DATA.deviceInventory.find(d=>d.siteId===site);
+    if(inv){
+      document.getElementById('ta-si-site').textContent=inv.siteId;
+      const dt=new Date(inv.installDate);
+      document.getElementById('ta-si-date').textContent=dt.toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'});
+      document.getElementById('ta-si-district').textContent=inv.district||'—';
+      document.getElementById('ta-si-block').textContent=inv.block||'—';
+      document.getElementById('ta-si-gp').textContent=inv.gpName||'—';
+      const statusEl=document.getElementById('ta-si-status');
+      statusEl.textContent=inv.status||'—';
+      statusEl.style.color=inv.status==='Functional'?'#2e7d32':'#c62828';
+      // Chlorine Demand & Decay from latest reading for this site
+      const siteRows=window.APP_DATA.processMonitoring.filter(d=>d.site===site&&d.date).sort((a,b)=>b.date.localeCompare(a.date));
+      const latest=siteRows[0];
+      if(latest){
+        const demFHH=(latest.tcrFHH!=null&&latest.fcrFHH!=null)?+(latest.tcrFHH-latest.fcrFHH).toFixed(3):null;
+        const decayFRC=(latest.fcrFHH!=null&&latest.fcrLHH!=null)?+(latest.fcrFHH-latest.fcrLHH).toFixed(3):null;
+        document.getElementById('ta-si-demand').textContent=demFHH!=null?`${demFHH} mg/L`:'—';
+        document.getElementById('ta-si-decay').textContent=decayFRC!=null?`${decayFRC} mg/L`:'—';
+      } else {
+        document.getElementById('ta-si-demand').textContent='—';
+        document.getElementById('ta-si-decay').textContent='—';
+      }
+      siteCard.style.display='block';
+    }
+  } else {
+    siteCard.style.display='none';
+  }
+
+  // Aggregate to daily averages when showing many rows (reduces clutter)
+  const avg=(arr)=>{ const v=arr.filter(x=>x!=null); return v.length?+(v.reduce((a,b)=>a+b,0)/v.length).toFixed(3):null; };
+  let chartRows=rows;
+  const isSingleSite=!!site;
+  if(!isSingleSite && rows.length>60){
+    const dayMap={};
+    rows.forEach(d=>{
+      if(!dayMap[d.date]) dayMap[d.date]={fcrFHH:[],fcrLHH:[],tcrFHH:[],tcrLHH:[]};
+      ['fcrFHH','fcrLHH','tcrFHH','tcrLHH'].forEach(k=>{ if(d[k]!=null) dayMap[d.date][k].push(d[k]); });
+    });
+    chartRows=Object.entries(dayMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,v])=>({
+      date,fcrFHH:avg(v.fcrFHH),fcrLHH:avg(v.fcrLHH),tcrFHH:avg(v.tcrFHH),tcrLHH:avg(v.tcrLHH)
+    }));
+  }
+
+  const labels=chartRows.map(d=>{
+    const [y,m,day]=d.date.split('-');
+    return `${day}/${m}/${y}`;
+  });
+
+  const ptR=isSingleSite?4:1.5;
+  const ptHR=isSingleSite?6:3;
+
+  // Reference lines: Max FRC=1.25, Min FRC=0.2 (WHO guidelines)
+  const taLineOpts=(yLabel)=>({
+    responsive:true,maintainAspectRatio:false,
+    interaction:{mode:'index',intersect:false},
+    plugins:{
+      legend:{position:'top',labels:{font:{size:11},usePointStyle:true,pointStyle:'circle'}},
+      tooltip:{callbacks:{label:ctx=>` ${ctx.dataset.label}: ${ctx.parsed.y!=null?ctx.parsed.y.toFixed(2):'-'} mg/L`}}
+    },
+    scales:{
+      y:{beginAtZero:true,title:{display:true,text:yLabel,font:{size:11},color:'#444'},
+         grid:{color:'rgba(0,0,0,.06)'},ticks:{font:{size:10},color:'#555'}},
+      x:{grid:{display:false},ticks:{font:{size:10},maxRotation:45,color:'#555',maxTicksLimit:20}}
+    }
+  });
+
+  destroyChart('chart-ta-frc');
+  const ctxF=document.getElementById('chart-ta-frc').getContext('2d');
+  chartInstances['chart-ta-frc']=new Chart(ctxF,{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'FCR FHH',data:chartRows.map(d=>d.fcrFHH),borderColor:'#42a5f5',backgroundColor:'rgba(66,165,245,.08)',tension:.35,fill:false,pointRadius:ptR,pointHoverRadius:ptHR,pointBackgroundColor:'#42a5f5',borderWidth:2},
+      {label:'FCR LHH',data:chartRows.map(d=>d.fcrLHH),borderColor:'#0d47a1',backgroundColor:'rgba(13,71,161,.08)',tension:.35,fill:false,pointRadius:ptR,pointHoverRadius:ptHR,pointBackgroundColor:'#0d47a1',borderWidth:2},
+      {label:'Sampling FRC',data:chartRows.map(d=>(d.fcrFHH!=null&&d.fcrLHH!=null)?+((d.fcrFHH+d.fcrLHH)/2).toFixed(3):null),borderColor:'#2e7d32',backgroundColor:'rgba(46,125,50,.08)',tension:.35,fill:false,pointRadius:ptR,pointHoverRadius:ptHR,pointBackgroundColor:'#2e7d32',borderWidth:2,borderDash:[5,3]},
+      {label:'Max FRC',data:chartRows.map(()=>1.25),borderColor:'#e53935',borderDash:[8,4],borderWidth:1.5,pointRadius:0,fill:false,tension:0},
+      {label:'Min FRC',data:chartRows.map(()=>0.2),borderColor:'#fdd835',borderDash:[8,4],borderWidth:1.5,pointRadius:0,fill:false,tension:0}
+    ]},
+    options:taLineOpts('FRC Value(PPM)')
+  });
+
+  destroyChart('chart-ta-trc');
+  const ctxT=document.getElementById('chart-ta-trc').getContext('2d');
+  chartInstances['chart-ta-trc']=new Chart(ctxT,{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'TCR FHH',data:chartRows.map(d=>d.tcrFHH),borderColor:'#ab47bc',backgroundColor:'rgba(171,71,188,.08)',tension:.35,fill:false,pointRadius:ptR,pointHoverRadius:ptHR,pointBackgroundColor:'#ab47bc',borderWidth:2},
+      {label:'TCR LHH',data:chartRows.map(d=>d.tcrLHH),borderColor:'#6a1b9a',backgroundColor:'rgba(106,27,154,.08)',tension:.35,fill:false,pointRadius:ptR,pointHoverRadius:ptHR,pointBackgroundColor:'#6a1b9a',borderWidth:2},
+      {label:'Sampling TRC',data:chartRows.map(d=>(d.tcrFHH!=null&&d.tcrLHH!=null)?+((d.tcrFHH+d.tcrLHH)/2).toFixed(3):null),borderColor:'#e65100',backgroundColor:'rgba(230,81,0,.08)',tension:.35,fill:false,pointRadius:ptR,pointHoverRadius:ptHR,pointBackgroundColor:'#e65100',borderWidth:2,borderDash:[5,3]},
+      {label:'Max TRC',data:chartRows.map(()=>1.25),borderColor:'#e53935',borderDash:[8,4],borderWidth:1.5,pointRadius:0,fill:false,tension:0},
+      {label:'Min TRC',data:chartRows.map(()=>0.2),borderColor:'#fdd835',borderDash:[8,4],borderWidth:1.5,pointRadius:0,fill:false,tension:0}
+    ]},
+    options:taLineOpts('TRC Value(PPM)')
+  });
+}
+
+ISWData.load('processMonitoring','deviceInventory').then(()=>{
+  populateFilters();
+  updateTAFilters();
+});
+</script>
+</body>
+</html>

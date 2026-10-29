@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glossary</title>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);padding:14px;}
+
+/* ── page header ── */
+.page-header{background:var(--surface);border-radius:8px;padding:14px 20px;border-left:4px solid var(--primary);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.page-header h2{font-size:16px;color:var(--primary);font-weight:700;}
+.page-header p{font-size:12px;color:var(--text-muted);margin-top:2px;}
+
+/* ── layout ── */
+.chart-row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start;}
+
+/* ── cards ── */
+.text-card{background:var(--surface);border-radius:8px;padding:28px 32px;box-shadow:0 1px 4px rgba(0,0,0,.07);line-height:1.85;font-size:15px;}
+.text-card h3{font-size:19px;font-weight:700;color:var(--primary);margin-bottom:14px;}
+.table-card{background:var(--surface);border-radius:8px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);overflow:auto;}
+.table-card h3{font-size:13px;font-weight:600;margin-bottom:12px;}
+
+/* ── table ── */
+table.data-table{width:100%;border-collapse:collapse;font-size:12px;}
+table.data-table th{background:var(--primary);color:white;padding:8px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;}
+table.data-table td{padding:7px 12px;border-bottom:1px solid var(--border);}
+table.data-table tr:hover td{background:#f5f8ff;}
+
+/* ── badges ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;}
+.badge-green{background:#d4edda;color:#155724;}
+.badge-red{background:#f8d7da;color:#721c24;}
+.badge-yellow{background:#fff3cd;color:#856404;}
+.badge-blue{background:#d1ecf1;color:#0c5460;}
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="page" id="page-glossary">
+  <div class="page-header"><h2>Glossary</h2><p>Key terms and definitions used in this dashboard</p></div>
+  <div class="chart-row">
+    <div class="text-card" style="flex:1;">
+      <h3>Terminology</h3>
+      <table class="data-table" style="margin-top:8px;">
+        <thead><tr><th>Term</th><th>Full Form / Definition</th></tr></thead>
+        <tbody>
+          <tr><td><strong>ILC</strong></td><td>Inline Chlorination — automated chlorine dosing at the water source</td></tr>
+          <tr><td><strong>FRC</strong></td><td>Free Residual Chlorine — chlorine remaining free in water at point of use (target ≥ 0.2 mg/L)</td></tr>
+          <tr><td><strong>TRC</strong></td><td>Total Residual Chlorine — total of free and combined chlorine in water</td></tr>
+          <tr><td><strong>FHH</strong></td><td>First Household — tap closest to the water source</td></tr>
+          <tr><td><strong>LHH</strong></td><td>Last Household — tap furthest from the water source</td></tr>
+          <tr><td><strong>TA</strong></td><td>Technical Assessment — structured field visit by EvAc staff</td></tr>
+          <tr><td><strong>LMT</strong></td><td>Last Mile Testing — verification of water quality at end-user taps</td></tr>
+          <tr><td><strong>GP</strong></td><td>Gram Panchayat — village-level local government body</td></tr>
+          <tr><td><strong>WSS</strong></td><td>Water Supply Scheme — the piped water supply infrastructure</td></tr>
+          <tr><td><strong>ISW</strong></td><td>Integrated Safe Water — Evidence Action's water safety programme</td></tr>
+          <tr><td><strong>JJM</strong></td><td>Jal Jeevan Mission — GoI programme for piped water to every household</td></tr>
+          <tr><td><strong>EvAc</strong></td><td>Evidence Action — implementing organisation</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="table-card" style="flex:0 0 360px;">
+      <h3>Bucket Type Details</h3>
+      <table class="data-table"><thead><tr><th>Bucket</th><th>Motor HP</th><th>Tank Size</th><th>Tablet (g)</th></tr></thead><tbody id="glossary-bucket-body"></tbody></table>
+      <div style="margin-top:16px;">
+        <h3 style="font-size:13px;font-weight:600;margin-bottom:8px;">FRC Interpretation</h3>
+        <table class="data-table">
+          <thead><tr><th>FRC Level</th><th>Interpretation</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-green">≥ 0.5 mg/L</span></td><td>Excellent — well above guideline</td></tr>
+            <tr><td><span class="badge badge-blue">0.2–0.49 mg/L</span></td><td>Compliant — meets WHO guideline</td></tr>
+            <tr><td><span class="badge badge-yellow">0.1–0.19 mg/L</span></td><td>Low — needs attention</td></tr>
+            <tr><td><span class="badge badge-red">&lt; 0.1 mg/L</span></td><td>Non-compliant — action required</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* Bucket types — copied from the dashboard's APP_DATA.bucketTypes. */
+/* bucketTypes comes from data/bucket-types.json */
+
+/* Bucket tables — in the dashboard this loop also fills 'bucket-table-body'
+   on the Refill page; only the glossary table exists here. */
+ISWData.load('bucketTypes').then(()=>{
+  ['bucket-table-body','glossary-bucket-body'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) window.APP_DATA.bucketTypes.forEach(b=>{
+      el.innerHTML+=`<tr><td>${b.bucket}</td><td>${b.motorHP}</td><td>${b.tankSize}</td><td>${b.tabletSize}</td></tr>`;
+    });
+  });
+});
+</script>
+</body>
+</html>

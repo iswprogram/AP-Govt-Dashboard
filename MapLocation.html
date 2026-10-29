@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ILC Device GeoLocation — Andhra Pradesh</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--green:#2e8b57;--red:#c0392b;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:14px;}
+
+/* ── page header ── */
+.page-header{background:var(--surface);border-radius:8px;padding:14px 20px;border-left:4px solid var(--primary);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.page-header h2{font-size:16px;color:var(--primary);font-weight:700;}
+.page-header p{font-size:12px;color:var(--text-muted);margin-top:2px;}
+
+/* ── map ── */
+#map-container{background:var(--surface);border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.07);flex:1;min-height:0;display:flex;flex-direction:column;}
+#leaflet-map{width:100%;flex:1;min-height:0;}
+
+/* ── legend ── */
+.legend-row{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:12px;}
+.legend-dot{width:10px;height:10px;border-radius:50%;}
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="page" id="page-map" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+  <div class="page-header">
+    <h2>ILC Device GeoLocation — Andhra Pradesh</h2>
+    <p>All 207 deployed ILC devices mapped by GPS coordinates &middot; Leaflet.js (OpenStreetMap)</p>
+  </div>
+  <div id="map-container"><div id="leaflet-map"></div></div>
+  <div class="legend-row" style="padding:8px 16px;background:white;border-radius:0 0 8px 8px;box-shadow:0 1px 4px rgba(0,0,0,.07);">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Functional</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Non-Functional</div>
+  </div>
+</div>
+
+<script>
+window.APP_DATA = window.APP_DATA || {};
+
+/* Device inventory — 213 rows, copied from the dashboard's APP_DATA.deviceInventory. */
+/* deviceInventory comes from data/device-inventory.json via js/data-loader.js */
+
+// ── MAP ──
+let leafletMap=null;
+function initMap(){
+  leafletMap=L.map('leaflet-map').setView([15.9,80.2],7);
+  setTimeout(()=>leafletMap.invalidateSize(),200);
+  // Basemap: Esri ArcGIS Online — no API key, no token, free for this usage with attribution.
+  // (Raw openstreetmap.org tiles return HTTP 403 "tile usage policy"; CARTO basemaps now
+  //  watermark unauthenticated requests with "API KEY REQUIRED".)
+  let basemap = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{
+    maxZoom:19, crossOrigin:true,
+    attribution:'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, &copy; OpenStreetMap contributors'
+  }).addTo(leafletMap);
+  // Fallback to Esri World Topographic if the street basemap fails to load.
+  let basemapErrors = 0, basemapSwapped = false;
+  basemap.on('tileerror', ()=>{
+    if (basemapSwapped || ++basemapErrors < 4) return;
+    basemapSwapped = true;
+    leafletMap.removeLayer(basemap);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{
+      maxZoom:19, crossOrigin:true, attribution:'Tiles &copy; Esri'
+    }).addTo(leafletMap);
+  });
+
+  const colorMap={'Functional':'#2e8b57','Non-Functional':'#c0392b'};
+  window.APP_DATA.deviceInventory.forEach(d=>{
+    const color=colorMap[d.status]||'#999';
+    L.circleMarker([d.lat,d.lng],{radius:7,fillColor:color,color:'#fff',weight:2,opacity:1,fillOpacity:0.9})
+      .addTo(leafletMap)
+      .bindPopup(`<strong>${d.siteId}</strong><br>District: ${d.district}<br>Block: ${d.block}<br>GP: ${d.gpName}<br>Scheme: ${d.schemeName}<br>Bucket: ${d.bucketType}<br>Installed: ${d.installDate}<br>Status: <span style="color:${color};font-weight:700">${d.status}</span>`)
+      .bindTooltip(d.siteId);
+  });
+}
+
+ISWData.load('deviceInventory').then(initMap);
+</script>
+</body>
+</html>

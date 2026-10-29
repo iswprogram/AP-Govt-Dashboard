@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resources</title>
+<style>
+/* ── tokens (from the dashboard) ── */
+:root{--primary:#1a4f8a;--primary-dk:#0d2f5c;--accent:#e8801a;--bg:#f0f4f8;--surface:#ffffff;--border:#d0d9e4;--text:#1a2535;--text-muted:#6b7a8d;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);padding:14px;}
+
+/* ── page header ── */
+.page-header{background:var(--surface);border-radius:8px;padding:14px 20px;border-left:4px solid var(--primary);margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.page-header h2{font-size:16px;color:var(--primary);font-weight:700;}
+.page-header p{font-size:12px;color:var(--text-muted);margin-top:2px;}
+
+/* ── card ── */
+.chart-card{flex:1;min-width:280px;background:var(--surface);border-radius:8px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);display:flex;flex-direction:column;}
+
+/* ── table ── */
+table.data-table{width:100%;border-collapse:collapse;font-size:12px;}
+table.data-table th{background:var(--primary);color:white;padding:8px 12px;text-align:left;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;}
+table.data-table td{padding:7px 12px;border-bottom:1px solid var(--border);}
+table.data-table tr:hover td{background:#f5f8ff;}
+</style>
+<script src="js/data-loader.js"></script>
+</head>
+<body>
+
+<div class="page" id="page-resources">
+  <div class="page-header"><h2>Resources</h2><p>Programme documents, test reports, and compliance files</p></div>
+  <div class="chart-card" style="padding:20px;">
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+      <select id="res-cat-filter" onchange="filterResources()" style="padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;background:#fff;">
+        <option value="">All Categories</option>
+        <option value="ISW Activities">ISW Activities</option>
+        <option value="Test Reports">Test Reports</option>
+      </select>
+      <input id="res-search" type="text" placeholder="Search documents..." oninput="filterResources()"
+        style="padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;flex:1;min-width:180px;">
+    </div>
+    <table class="data-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th style="width:160px;">Category</th>
+          <th>Document</th>
+          <th style="width:60px;text-align:center;">Link</th>
+        </tr>
+      </thead>
+      <tbody id="res-tbody"></tbody>
+    </table>
+    <div id="res-empty" style="display:none;text-align:center;color:#999;padding:32px;font-size:14px;">No documents match your search.</div>
+  </div>
+</div>
+
+<script>
+// ── RESOURCES ──
+/* The document list comes from data/resources.json; filled once it loads. */
+let RESOURCES = [];
+
+function renderResourceRows(rows){
+  const tbody=document.getElementById('res-tbody');
+  const empty=document.getElementById('res-empty');
+  if(!tbody) return;
+  tbody.innerHTML=rows.map(r=>`
+    <tr>
+      <td><span style="background:#e3f2fd;color:#1565c0;font-weight:600;padding:2px 8px;border-radius:10px;font-size:11px;">${r.cat}</span></td>
+      <td style="font-size:13px;">${r.title}</td>
+      <td style="text-align:center;">
+        ${r.url
+          ?`<a href="${r.url}" target="_blank" style="color:#1565c0;font-size:18px;text-decoration:none;" title="Open document">🔗</a>`
+          :`<span style="color:#ccc;font-size:18px;" title="URL not configured">🔗</span>`}
+      </td>
+    </tr>`).join('');
+  if(empty) empty.style.display=rows.length?'none':'block';
+}
+
+function filterResources(){
+  const cat=(document.getElementById('res-cat-filter')||{}).value||'';
+  const q=((document.getElementById('res-search')||{}).value||'').toLowerCase();
+  const rows=RESOURCES.filter(r=>
+    (!cat||r.cat===cat)&&
+    (!q||r.title.toLowerCase().includes(q)||r.cat.toLowerCase().includes(q))
+  );
+  renderResourceRows(rows);
+}
+
+function initResources(){
+  renderResourceRows(RESOURCES);
+}
+
+ISWData.load('resources').then(data=>{
+  RESOURCES = data.resources;
+  initResources();
+});
+</script>
+</body>
+</html>
