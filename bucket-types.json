@@ -1,0 +1,7 @@
+[
+{"bucket": "Bucket 0", "motorHP": "-", "tankSize": "T<20 KL", "tabletSize": "0.5"},
+{"bucket": "Bucket 1", "motorHP": "0<3", "tankSize": "T>21KL", "tabletSize": "0.5"},
+{"bucket": "Bucket 2", "motorHP": "3<=5", "tankSize": "T>21KL", "tabletSize": "0.5"},
+{"bucket": "Bucket 3", "motorHP": "5<=7.5", "tankSize": "T>21KL", "tabletSize": "0.5"},
+{"bucket": "Bucket 4", "motorHP": "7.5<", "tankSize": "T>21KL", "tabletSize": "0.5"}
+]
